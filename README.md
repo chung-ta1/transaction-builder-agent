@@ -54,13 +54,14 @@ cd transaction-agent
 1. Open [github.com/chung-ta1/transaction-agent](https://github.com/chung-ta1/transaction-agent) in your browser.
 2. Click the green **Code ▾** button → **Download ZIP**.
 3. Unzip the file (double-click it on macOS). You'll get a folder called `transaction-agent-main`.
-4. Open Terminal (Spotlight → "Terminal").
-5. Type `cd ` (with a trailing space, **don't press Enter yet**):
+4. **Move the folder to a place you'll keep it permanently** — e.g. `Documents/` or your preferred workspace folder. ⚠️ **Don't leave it in Downloads** — if you clean out Downloads later, Claude will lose track of the tool and stop working. If you ever do move the folder after setup, re-run `./setup.sh` from the new location to re-register.
+5. Open Terminal (Spotlight → "Terminal").
+6. Type `cd ` (with a trailing space, **don't press Enter yet**):
    ```
    cd 
    ```
-6. Drag the `transaction-agent-main` folder from Finder onto the Terminal window. This pastes its full path after `cd `. **Now press Enter.**
-7. Run the setup:
+7. Drag the `transaction-agent-main` folder from Finder (in its new permanent location) onto the Terminal window. This pastes its full path after `cd `. **Now press Enter.**
+8. Run the setup:
    ```bash
    ./setup.sh
    ```
