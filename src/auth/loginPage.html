@@ -145,8 +145,27 @@
       .field {
         margin-bottom: 16px;
       }
+      .remember-row {
+        margin: 4px 0 6px;
+      }
+      .remember-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+        font-size: 13px;
+        color: var(--text-muted);
+        cursor: pointer;
+        user-select: none;
+      }
+      .remember-label input[type="checkbox"] {
+        width: auto;
+        margin: 0;
+        accent-color: var(--accent-from);
+        cursor: pointer;
+      }
       .actions {
-        margin-top: 24px;
+        margin-top: 20px;
       }
       button[type="submit"] {
         width: 100%;
@@ -384,6 +403,18 @@
               />
             </div>
 
+            <div class="field remember-row">
+              <label class="remember-label" for="remember">
+                <input
+                  type="checkbox"
+                  id="remember"
+                  name="remember"
+                  checked
+                />
+                <span>Remember me on this device</span>
+              </label>
+            </div>
+
             <div class="actions">
               <button type="submit" id="submitBtn">
                 <span class="spinner" aria-hidden="true"></span>
@@ -422,14 +453,24 @@
 
     <script>
       (function () {
+        const LS_EMAIL_KEY = "tx-agent:last-email";
+        const LS_REMEMBER_KEY = "tx-agent:remember";
+
         const params = new URLSearchParams(window.location.search);
         const env = params.get("env") || "";
-        const prefillEmail = params.get("email") || "";
+        // Email prefill priority: URL param (from MCP memory) → localStorage
+        // (from a prior login on this browser) → empty.
+        const storedEmail =
+          window.localStorage.getItem(LS_EMAIL_KEY) || "";
+        const prefillEmail = params.get("email") || storedEmail;
+        const storedRemember = window.localStorage.getItem(LS_REMEMBER_KEY);
+        const rememberDefault = storedRemember === null ? true : storedRemember === "1";
 
         const envLabel = document.getElementById("envLabel");
         const envBadge = document.getElementById("envBadge");
         const emailInput = document.getElementById("email");
         const passwordInput = document.getElementById("password");
+        const rememberInput = document.getElementById("remember");
         const form = document.getElementById("loginForm");
         const card = document.getElementById("card");
         const submitBtn = document.getElementById("submitBtn");
@@ -439,6 +480,7 @@
         envLabel.textContent = env || "unknown";
         envBadge.textContent = env || "unknown";
         if (prefillEmail) emailInput.value = prefillEmail;
+        rememberInput.checked = rememberDefault;
         (prefillEmail ? passwordInput : emailInput).focus();
 
         if (!env) {
@@ -492,10 +534,24 @@
               throw new Error("Sign-in response did not include a token.");
             }
 
+            const remember = rememberInput.checked;
+            // Persist remember preference + email across browser sessions.
+            window.localStorage.setItem(LS_REMEMBER_KEY, remember ? "1" : "0");
+            if (remember) {
+              window.localStorage.setItem(LS_EMAIL_KEY, usernameOrEmail);
+            } else {
+              window.localStorage.removeItem(LS_EMAIL_KEY);
+            }
+
             const relay = await fetch("/token", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ env, accessToken, email: usernameOrEmail }),
+              body: JSON.stringify({
+                env,
+                accessToken,
+                email: usernameOrEmail,
+                remember,
+              }),
             });
             if (!relay.ok) {
               throw new Error("Could not relay token to the MCP.");

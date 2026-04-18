@@ -67,9 +67,22 @@ export class InvalidEnvError extends Error {
 
 /**
  * URL the agent returns to the user at the end of a successful draft.
- * Verified on first real run — adjust here if bolt's route is different.
+ * Route is `/transaction/create/{builderId}` (singular `transaction`).
+ * A previous version used the plural form; Bolt's router then treated
+ * "create" as a transactionId and threw a UUID conversion error.
  */
 export function buildDraftUrl(env: Env, builderId: string): string {
   const { bolt } = urlsFor(env);
-  return `${bolt}/transactions/create/${builderId}`;
+  return `${bolt}/transaction/create/${builderId}`;
+}
+
+/**
+ * URL for a submitted transaction's detail page in Bolt. Used by flows that
+ * create AND submit in one shot (e.g. `create_referral_payment`), which
+ * return the real Transaction id — not a builder id — and don't produce a
+ * draft URL at all.
+ */
+export function buildTransactionDetailUrl(env: Env, transactionId: string): string {
+  const { bolt } = urlsFor(env);
+  return `${bolt}/transactions/${transactionId}/detail`;
 }

@@ -37,11 +37,21 @@ export const participantRoleSchema = z.enum([
 
 export const participantTypeSchema = z.enum(["EXTERNAL_ENTITY", "AGENT"]);
 
-export const dealTypeSchema = z.enum(["SALE", "LEASE", "REFERRAL"]);
+// Authoritative values from arrakis OpenAPI spec
+// (https://arrakis.stagerealbrokerage.com/v3/api-docs/arrakis-public).
+// A prior version had SALE/LEASE/REFERRAL only — arrakis actually accepts
+// 8 dealTypes, and rejects unknown values at write time.
+export const dealTypeSchema = z.enum([
+  "SALE", "LEASE", "REFERRAL",
+  "COMPENSATING", "COMMERCIAL_LEASE", "PLOT", "OTHER", "INTERNAL_REFERRAL",
+]);
 
+// Authoritative values from arrakis spec. A prior version used LAND /
+// CONDOMINIUM / MANUFACTURED_MOBILE_HOME / TOWNHOUSE / FARM_AND_RANCH /
+// OTHER — arrakis rejects those. Real names below.
 export const propertyTypeSchema = z.enum([
-  "RESIDENTIAL", "COMMERCIAL", "LAND", "CONDOMINIUM", "TOWNHOUSE",
-  "MANUFACTURED_MOBILE_HOME", "FARM_AND_RANCH", "OTHER",
+  "RESIDENTIAL", "COMMERCIAL", "LAND_LOT", "CONDO",
+  "MOBILE_HOME", "NEW_CONSTRUCTION",
 ]);
 
 export const personSchema = z.object({

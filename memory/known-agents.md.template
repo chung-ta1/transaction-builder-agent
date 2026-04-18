@@ -9,19 +9,6 @@ preview). A miss or a stale entry triggers a fresh search.
 
 ```yaml
 agents: []
-# Example entries the agent writes after a successful draft:
-# - first_name: Tamir
-#   last_name: Malchizadi
-#   yenta_id: 00000000-0000-0000-0000-000000000000
-#   brokerage: Real
-#   added_at: 2026-04-16
-# - first_name: Jason
-#   last_name: Smith
-#   external: true
-#   brokerage: Smith Realty
-#   address: 200 W. Broker St
-#   ein: "00-0000000"
-#   added_at: 2026-04-10
 ```
 
 **Privacy note**: this file stays local to your machine. External-entity details

@@ -64,8 +64,11 @@ describe("config", () => {
 
   describe("buildDraftUrl", () => {
     it("builds the bolt URL for a builderId", () => {
+      // Bolt uses singular /transaction/create/{id} — plural was a pre-live
+      // guess that 400'd on first real use (would-be builderId gets
+      // interpreted as transactionId). See memory/transaction-rules.md.
       expect(buildDraftUrl("team1", "8c4f-abcd")).toBe(
-        "https://bolt.team1realbrokerage.com/transactions/create/8c4f-abcd",
+        "https://bolt.team1realbrokerage.com/transaction/create/8c4f-abcd",
       );
     });
   });

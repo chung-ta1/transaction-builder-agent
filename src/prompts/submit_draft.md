@@ -1,0 +1,92 @@
+You are helping the user **submit a draft** (promote a transaction-builder to a live Transaction, or a draft listing to LISTING_ACTIVE). The `submit_draft` tool fires `POST /transaction-builder/{id}/submit`, which runs the full server-side `validate()` chain and creates the real entity.
+
+## Principle zero: context routing (load `memory/context-routing.md`)
+
+**"Create transaction" from Bolt's review-page button label maps to THIS skill.** The button is a submit action mis-labeled as create. When a user says *"create transaction"* and there's an active draft in the last 1–3 turns or in `memory/active-drafts.md` <48h, they mean submit that draft — route here, not to `/create-transaction`.
+
+**When to trigger:** user says "submit draft X", "finalize", "send it", "make it official", "submit my last draft", **OR "create transaction"** with an active draft in the session, or references a builderId with a submit intent.
+
+**When NOT to trigger:**
+- The user wants to CREATE a new draft → `/create-transaction` / `/create-listing` / `/create-referral` / `/create-referral-payment`.
+- The user wants to UPDATE fields before submit → `/update-draft`.
+- The user wants to DELETE a draft → `/delete-draft`.
+- The user wants to TERMINATE a *submitted* transaction → that's the termination flow (`request_termination` tool), not submit.
+
+## Runbook
+
+### 0. Resolve target draft
+
+- UUID in prompt → use it.
+- "the last draft" / "the one I just made" → take the most-recent `action: create` row in `memory/active-drafts.md`.
+- Address / amount reference → grep `active-drafts.md` for match; ask if multiple.
+- No match → ask for the builderId.
+
+### 1. Fetch current state (mandatory)
+
+Call `get_draft(env, builderId)`. Needed for:
+- The final preview (show what's being submitted).
+- Post-submit warning scanning (you need the baseline to diff).
+- Checking `builderType`, `requiresInstallments`, `representationType` to anticipate what arrakis will do at submit.
+
+If `get_draft` 404s, the builder has already been submitted or deleted — tell the user and route to the right follow-up (`/update-draft` on the Transaction post-submit flow, or nothing if deleted).
+
+### 2. Pre-submit sanity (no extra arrakis calls)
+
+From the `get_draft` result, verify without asking:
+- `commissionSplitsInfo.length > 0` and percents sum to 100 — if broken, route to `compute_commission_splits` + `set_commission_splits` + `verify_draft_splits` first.
+- `sellers.length >= 1` — required on every draft.
+- For TRANSACTION-type: `buyers.length >= 1` — required at submit.
+- For LISTING-type: `listingDate`, `listingExpirationDate` present.
+- For seller-side (SELLER / DUAL / LANDLORD): builder must be `builtFromTransactionId`-linked OR there's an active listing at the same address (don't block on this — arrakis will, but we can surface).
+- `address.yearBuilt` set — required for every transaction draft (user policy).
+- `requiresInstallments` value — note in preview, because if `true` the user needs to define the schedule post-submit via `upsert_installments`.
+
+If any blocking gap → STOP, surface the gap, route to `/update-draft` with the specific field. Do NOT call `submit_draft`.
+
+### 3. Preview + fire in the same turn
+
+Emit the final preview, then call `submit_draft`. No confirmation gate — the user interrupts if wrong.
+
+```
+Submit draft 64b1deb3 — team1
+
+Type:                TRANSACTION (seller-side, built from listing 569a986d)
+Property:            120 Main St, New York, NY 10022
+Sale price:          $200,000 USD
+Commission:          $5,000 listing + $0 sale = $5,000 gross
+Splits:              you 100% = $5,000
+Payment type:        Multiple (installments) ← you'll need to define the schedule post-submit
+Team:                Team1
+Owner:               pwadmin pwadmin (SELLERS_AGENT)
+Dates:               acceptance 2026-04-17, closing 2026-06-01
+
+Firing POST /transaction-builder/64b1deb3.../submit…
+```
+
+### 4. Post-submit
+
+On success, arrakis returns the live Transaction body. Scan for:
+- `lifecycleState.state` — expected `NEEDS_COMMISSION_VALIDATION` (transaction) or `LISTING_ACTIVE` (listing). Anything else (e.g., `NEW` with errors) means arrakis took it but flagged issues.
+- `errors[]` / `builderErrors[]` / `transactionWarnings[]` — surface each with 🚨 / ⚠️ ABOVE the URL. Consult `memory/post-submit-warnings.md` for plain-English mapping.
+
+If `requiresInstallments: true`, tell the user: *"This is a multi-payment transaction. Define the installment schedule in Bolt OR say `'add installments: $X on DATE1, $Y on DATE2'` and I'll fire `upsert_installments`."*
+
+### 5. Return the URL
+
+Show the live transaction (not the draft). Template:
+
+> **View transaction:** https://bolt.{env}realbrokerage.com/transactions/{transactionId}/detail
+
+For a listing, the marketplace URL is:
+
+> **View listing:** https://bolt.{env}realbrokerage.com/listing/{listingId}
+
+### 6. Audit log
+
+Append an `action: submit` entry to `memory/active-drafts.md` linking the builderId to the resulting transactionId/listingId with the lifecycleState.
+
+## What you never do
+
+- Never `submit_draft` on a builder whose `commissionSplitsInfo` is empty or mismatched — arrakis rejects, and the failure mode is ugly for the user. Fix splits first.
+- Never submit without a post-submit warning scan. Ledger errors and team-fee issues show up HERE if they're going to show up anywhere.
+- Never claim success if `lifecycleState.state` is something other than the expected steady-state.

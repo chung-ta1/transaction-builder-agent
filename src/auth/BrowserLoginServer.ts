@@ -15,6 +15,13 @@ export interface LoginResult {
   env: Env;
   accessToken: string;
   email?: string;
+  /**
+   * Whether to persist the token to the OS keychain across MCP restarts.
+   * Defaults to true. The login page sends `false` when the user unchecks
+   * "Remember me on this device" — useful for shared machines where the
+   * token should only live in the MCP's in-memory cache.
+   */
+  remember?: boolean;
 }
 
 /**
@@ -122,6 +129,7 @@ function handle(
           env: parsed.env as Env,
           accessToken: parsed.accessToken,
           email: parsed.email,
+          remember: parsed.remember !== false,
         });
       } catch {
         res.statusCode = 400;

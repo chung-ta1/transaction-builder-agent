@@ -30,9 +30,22 @@ export class TokenCache {
     return undefined;
   }
 
-  async set(env: Env, token: CachedToken): Promise<void> {
+  /**
+   * Stores a token in memory and (by default) in the OS keychain so it
+   * survives MCP restarts. Pass `{ persist: false }` for session-only
+   * caching — typically when the user unchecked "Remember me" on a shared
+   * machine.
+   */
+  async set(env: Env, token: CachedToken, opts: { persist?: boolean } = {}): Promise<void> {
     this.memory.set(env, token);
-    await this.writeKeychain(env, token);
+    const persist = opts.persist !== false;
+    if (persist) {
+      await this.writeKeychain(env, token);
+    } else {
+      // Drop any existing persisted copy so a prior "remember me" doesn't
+      // silently resurrect after an explicit opt-out.
+      await this.deleteKeychain(env);
+    }
   }
 
   async clear(env: Env): Promise<void> {

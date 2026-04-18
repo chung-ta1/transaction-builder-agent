@@ -63,27 +63,36 @@ Seven independent guards. **This is a financial document — every guard is mand
 
 **G1. Integer-cents arithmetic — code-enforced.** All commission math runs through `compute_commission_splits`, which is a pure TypeScript module (`src/math/commissionSplits.ts`) using integer cents and basis-points throughout. The agent **must** call this tool — it never computes splits in the LLM. The tool throws `CommissionMathError` on any contradictory input; treat that as a stop.
 
-**G2. Renormalization ACK — TYPE-TO-CONFIRM gate (not a button click).**
+**G2. Two-stage inconsistent-sum gate — INTERPRETATION first, then TYPE-TO-CONFIRM.**
 
-When the user's raw percentages don't already sum to `100.00`, the agent must fire a dedicated `AskUserQuestion` *before* the final preview, with a bold red callout and the full math trace:
+When the user's raw percentages don't already sum to `100.00`, run two separate gates in order. Never collapse them into one "here's the renormalization, type confirm" prompt — that pattern primes the user to accept a guessed interpretation.
+
+**G2a — Interpretation gate (runs before the parse summary, in step 3a of the runbook).** Fire an `AskUserQuestion` with ≥2 plausible interpretations as explicit options, plus "let me restate the percentages" as an escape. Each option must show its full dollar math. Example for "me 60 / Tamir 40 / Jason 30 referral" on $20,000 gross:
+
+- **Option A — Referral off the top, agents share remainder 60/40.** Jason 30% = $6,000 · You 42% = $8,400 · Tamir 28% = $5,600 · sums to 100%.
+- **Option B — Agents share gross 60/40, referral not on this draft.** You 60% = $12,000 · Tamir 40% = $8,000 · Jason dropped.
+- **Option C — Let me restate the percentages.** (User supplies corrected numbers.)
+
+The agent must not present one of these as "what I'll send" — they are peers. If only one is plausible (rare), state that explicitly and still surface the alternative. Do NOT proceed to the parse summary or any downstream step until the user has picked one.
+
+**G2b — Type-to-confirm gate (runs after the user picks an interpretation, before the final preview).** Once the user chose an interpretation (e.g. Option A), fire a second `AskUserQuestion` with a bold callout showing exactly the chosen math:
 
 > 🛑 **COMMISSION RENORMALIZED TO SUM TO 100% — REVIEW CAREFULLY**
 >
-> **Your prompt said:**
-> - You:    `60%`
-> - Tamir:  `40%`
-> - Jason:  `30%` referral
-> - **Raw sum: `130%`** (arrakis rejects anything ≠ 100%)
+> **Your raw intent:** `60 / 40 / 30 referral` (sum 130%, arrakis rejects)
+> **Your choice:** Option A — referral off the top, agents 60/40 of remainder.
 >
 > **I will send to arrakis:**
-> - Jason (referral off the top): `30.00%` → `$6,000.00`
-> - You (60/(60+40) × 70%):        `42.00%` → `$8,400.00`
-> - Tamir (40/(60+40) × 70%):      `28.00%` → `$5,600.00`
+> - Jason (referring agent): `30.00%` → `$6,000.00`
+> - You (buyer's agent):     `42.00%` → `$8,400.00`
+> - Tamir (buyer's agent):   `28.00%` → `$5,600.00`
 > - **Normalized sum: `100.00%`** · **Dollar sum: `$20,000.00`** · Gross: `$20,000.00` · ✓ reconciled
 
-The user must **type a literal "confirm" word** (not just pick a button) to advance. The agent uses `AskUserQuestion` with an `Other` free-text path and a required exact token — no "Yes, proceed" button. This is deliberate friction so the user can't absent-mindedly approve a wrong number.
+The user must **type a literal "confirm" word** (not just pick a button) to advance. The agent uses `AskUserQuestion` with an `Other` free-text path and a required exact token — no "Yes, proceed" button. Deliberate friction so the user can't absent-mindedly approve a wrong number.
 
-Accepted tokens: `confirm`, `I confirm`, `yes confirm`. Anything else (including plain "yes") loops back to the ACK with the callout.
+Accepted tokens: `confirm`, `I confirm`, `yes confirm`. Anything else (including plain "yes") loops back to G2b with the callout. A user answer of "restate" or an obvious percentage reply sends the agent back to G2a.
+
+**Why two stages:** if G2 were a single "here's the renormalization, type confirm" prompt, the agent has already decided the interpretation for the user — and the user may accept it because it looks authoritative. G2a forces the decision to happen with all plausible readings visible side-by-side. Verified bug: draft 3f0a2b1c (2026-04-17) — agent presented renormalized 42/28/30 as parsed fact; user actually meant 50/25/25 and had to push back.
 
 **G3. Dollar-and-percent dual reconciliation — code-enforced inside `compute_commission_splits`.** The tool asserts both invariants before returning; if either fails it throws. Two invariants:
 
@@ -136,9 +145,20 @@ Never compress these into a single line like `Sale · $20k · USD`. A user who d
 
 ## Commission payer
 
-Payer is a participant (created via `add_commission_payer_participant`), then pointed at by `set_commission_payer{participantId, role}`.
+**OPTIONAL at submit.** arrakis's `TransactionBuilder.validate()` has its payer-presence check commented out (line ~644: "ignore this for now until we remove skyslope"). A draft with a null payer saves and submits fine. The user fills in the payer in Bolt via "I Don't Have The Information Yet" after opening the draft URL.
 
-| Country | Deal | Default payer |
+**When you DO wire a payer**, `CommissionPayerInfoRequestValidator` REQUIRES all six fields simultaneously:
+
+- role, firstName, lastName, companyName, email, phoneNumber
+
+A partial payload (e.g. only `companyName`) fails bean validation with messages like "First name is required for commission payer info". So:
+
+- **Have all 6 fields** → create the payer via `add_commission_payer_participant`, point at it via `set_commission_payer{participantId, role}`.
+- **Don't have all 6 fields** → omit both calls. `finalize_draft`'s payer args are optional; leave them unset.
+
+### Typical default roles (when the user does provide full info)
+
+| Country | Deal | Role |
 |---|---|---|
 | US | SALE | `TITLE` |
 | Canada | SALE | `SELLERS_LAWYER` (also create `BUYERS_LAWYER`) |
@@ -169,4 +189,4 @@ The MCP checks these client-side before returning the bolt URL so the user doesn
 
 ## Draft URL
 
-`https://bolt.{env}realbrokerage.com/transactions/create/{builderId}` — verify on the first real run against each env; update here if bolt uses a different path.
+`https://bolt.{env}realbrokerage.com/transaction/create/{builderId}` — singular `transaction`, not plural. Using the plural form makes Bolt's router interpret "create" as a transactionId and throw `could not be converted to type 'UUID'`. Verified 2026-04-17 against team1.

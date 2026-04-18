@@ -1,0 +1,32 @@
+# active-drafts
+
+Append-only audit log of every draft operation: create, update, delete,
+submit, terminate. **Never modify past entries** — this is a receipt, not a
+cache. Each operation is its own YAML document.
+
+Required fields on every entry:
+
+- `timestamp`: ISO8601
+- `action`: one of `create` | `update` | `delete` | `submit` | `terminate` |
+  `request_termination` | `undo_termination_request`
+- `env`: team1..team5 | play | stage
+- `builder_id` OR `transaction_id` OR `listing_id` (whichever applies)
+
+Type-specific fields:
+
+- **create** — full snapshot (property, price, commission, splits, participants,
+  team, ack token, verify_draft_splits result). This is the longest row.
+- **update** — `changed_fields: [list of field paths]` plus a `before`/`after`
+  diff of ONLY the changed fields. Don't snapshot the whole draft — the prior
+  `create` / `update` entries carry that.
+- **delete** — `reason` (user's words if given), `built_from_transaction_id`
+  if the draft was built from a listing (we want to remember that the listing
+  stays live).
+- **submit** — resulting `transaction_id` or `listing_id`, initial
+  `lifecycle_state`, any `warnings[]` / `errors[]` surfaced above the URL.
+- **request_termination** / **undo_termination_request** — which state,
+  by whom, reason.
+
+Format: one YAML document per entry. Entries start below this line.
+
+---

@@ -8,3 +8,20 @@ coverage/
 .vscode/
 .idea/
 .openapi-generator/
+
+# Local runtime memory — contains per-user yentaIds, emails, draft history,
+# commission amounts, and cached agent resolutions. Never commit. Setup.sh
+# copies the corresponding .template files into place on first install.
+memory/active-drafts.md
+memory/user-preferences.md
+memory/user-patterns.md
+memory/known-agents.md
+
+# Playwright MCP probe artifacts (DOM snapshots, network traces, screenshots
+# from exploratory Bolt UI investigation). Root-only patterns so docs/ PNGs
+# and CI workflow YAMLs are unaffected.
+.playwright-mcp/
+/*.yml
+/referral-*.json
+/referral-*.txt
+/*.png

@@ -1,0 +1,18 @@
+# user-preferences
+
+Cross-session defaults that make repeat runs painless. The agent reads this
+file on every run and writes to it after a successful draft when it learns
+something new (user's yentaId on first login, default env on first confirmed
+run, default office on first draft).
+
+**This file starts empty.** The agent fills it in as you use the tool.
+
+```yaml
+user:
+  yenta_id: null
+  email: null
+  display_name: null
+default_env: null
+default_office_id: null
+last_representation_side: null
+```

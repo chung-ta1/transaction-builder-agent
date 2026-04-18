@@ -1,0 +1,68 @@
+You are helping the user see what drafts they have in flight — the read-only "inbox" of their unsubmitted transaction-builders. The `list_my_builders` tool fires `GET /api/v1/transaction-builder/paged?ownerId={yentaId}`.
+
+## Principle zero: context routing (load `memory/context-routing.md`)
+
+Read-only flow — no ambiguity on direction. But when the user follows up with a row number or says "that one", resolve against the list you just rendered, not against `active-drafts.md`. Session context from this turn wins.
+
+**When to trigger:** user says "what drafts do I have", "list my drafts", "show my in-flight drafts", "what's pending", "any open drafts", "show me my last 10 drafts", "drafts I haven't submitted yet".
+
+**When NOT to trigger:**
+- The user wants to see submitted transactions → different endpoint, different flow (not yet wrapped; use Bolt's `/transactions` list).
+- The user wants to see listings → `search_existing_listings` (also different).
+- The user wants to operate on a specific draft → use the resolved id with `/update-draft`, `/submit-draft`, `/delete-draft`, or `/resume-draft`.
+
+## Runbook
+
+### 0. Auth
+
+`verify_auth(env)` — need the user's yentaId for the query. If `loginPending:true` is returned, tell them "signing in — I'll list as soon as you complete it."
+
+### 1. Fetch
+
+`list_my_builders(env, ownerId: {yentaId}, limit: 10, type?: "TRANSACTION"|"LISTING")`. Default to limit 10; page if the user asks for more.
+
+If the user's phrasing hints at a type filter:
+- "transaction drafts" → `type: "TRANSACTION"`
+- "listing drafts" → `type: "LISTING"`
+- Otherwise → no filter (both types).
+
+### 2. Render
+
+Format as a terse table. For EACH draft surface the signals that help the user decide what to do with it:
+
+```
+Your drafts in {env} (showing {n} of {total}):
+
+#  builder              type         property                         amount     status
+1  64b1deb3…            TRANSACTION  120 Main St, NY 10022            $200,000   ready to submit (updated 3m ago)
+2  c6a608d1…            TRANSACTION  123 main, NY 10024               $2,000,000 ready to submit (1h ago)
+3  9aa1e218…            LISTING      120 Main St, NY 10022            $200,000   submitted → LISTING_ACTIVE (1h ago)
+…
+```
+
+Abbreviate builder ids to the first 8 chars for readability. Show full id on request.
+
+For each row, compute:
+- `updated` relative time from `updatedAt`.
+- `status` — infer from payload:
+  - Has owner agent + commission splits summing to 100 + sellers + (buyers if transaction) + yearBuilt → "ready to submit"
+  - Missing any of the above → "incomplete: {missing field}"
+  - Listing builder that's been submitted (rare — list endpoint usually filters unsubmitted) → "submitted → LISTING_ACTIVE"
+- `amount` — salePrice or grossCommission, whichever is more meaningful for the user.
+
+### 3. Follow-up routing
+
+After the list, proactively offer shortcuts:
+> *"Say 'resume the 2nd one' / 'submit #1' / 'delete #3' / 'show me #1 in detail' and I'll pick that builderId."*
+
+When the user refers by row number in the next turn, resolve against this listed order.
+
+### 4. No writes, no audit entry
+
+This is a read-only flow. Nothing to log in `memory/active-drafts.md`.
+
+## What you never do
+
+- Never call `list_my_builders` without an authenticated yentaId. A blank ownerId returns everyone's drafts (or 403); not useful.
+- Never render the full draft JSON blob — it's huge and burns the user's context. One-line per row.
+- Never claim "you have no drafts" without confirming the API actually returned an empty list vs. errored.

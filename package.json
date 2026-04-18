@@ -7,7 +7,8 @@
   },
   "type": "module",
   "scripts": {
-    "build": "rm -rf dist && tsc && cp src/auth/loginPage.html dist/auth/loginPage.html",
+    "build": "rm -rf dist && npm run gen && tsc && cp src/auth/loginPage.html dist/auth/loginPage.html && mkdir -p dist/prompts && cp src/prompts/*.md dist/prompts/",
+    "gen": "./scripts/gen-cli-wrappers.sh",
     "dev": "tsc --watch",
     "lint": "tsc --noEmit",
     "start": "node dist/index.js",

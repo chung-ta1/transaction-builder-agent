@@ -1,0 +1,61 @@
+# user-patterns
+
+Categorical patterns the agent learns about you over time. These feed strong
+defaults so the second, third, and tenth drafts ask almost nothing.
+
+**Rules:**
+
+- Only **categorical** values live here (who you partner with, what env you
+  use, what side you usually represent). Never financial values (dollar
+  amounts, percentages).
+- The agent reads this on every run and uses it to skip clarifying questions
+  that are confidently inferable.
+- The agent updates this file after every successfully-confirmed draft.
+- Fields default to `null` until the agent has observed enough signal.
+- Remove or edit any entry at any time; the agent re-learns naturally.
+
+```yaml
+typical_env: null
+typical_office_id: null
+typical_representation_side: null
+typical_deal_type: null
+typical_country: null
+typical_state: null
+
+# yearBuilt is ALWAYS required for transaction drafts (arrakis enforces it).
+# Offer `typical_year_built` as the FIRST option in the AskUserQuestion so the
+# user can one-click through when the answer hasn't changed. Still ask every
+# run — this is just the default, not a silent value.
+typical_year_built: null
+
+# MLS numbers the user has used recently. Surfaced as a default option on
+# the MLS question. "N/A" is always a valid answer for exclusive deals.
+recent_mls_numbers: []
+
+# Teams the authenticated user belongs to (from yenta teamMemberships).
+# Agent resolves "I am on <teamName>" to teamId and sets it on the draft via
+# set_owner_agent_info. Without this, the Bolt UI shows Team = empty and the
+# user must pick manually before submit.
+teams: []
+
+typical_team_id: null
+
+frequent_partners: []
+
+frequent_referrals: []
+
+# Most-recently-used team (recency, NOT stability). Different from
+# `typical_team_id` which is the agent's stable default. The runbook prefers
+# `typical_team_id` for silent defaulting; `last_used_team_id` only surfaces
+# as an "or try again" option when the user says "same team as last time".
+last_used_team_id: null
+```
+
+**What the agent does NOT store here:**
+
+- Specific sale prices or commission amounts from past drafts
+- Specific commission split percentages
+- Dates of specific deals (those belong in `active-drafts.md`)
+
+Those are either in `active-drafts.md` (financial audit log, append-only) or
+deliberately not cached at all.
