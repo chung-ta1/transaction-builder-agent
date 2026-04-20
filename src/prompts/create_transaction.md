@@ -552,18 +552,55 @@ Commission paid by:  {payer_display}
 
 ### 9. Execute tools (convenience-first)
 
-Happy path:
+**Happy path — one MCP call.**
+
+For single-rep transactions (`representationType` ∈ `{BUYER, SELLER, TENANT, LANDLORD}`) and listings, call **`create_full_draft`** with the complete answers bundle. The MCP sequences everything server-side: create → location → price/dates → buyer+seller → owner → partners → referral → compute_commission_splits → set_commission_splits → verify_draft_splits → finalize. Returns `{ builderId, draftUrl, splits, participants, renormalized, payerSet, total }`.
+
+Input shape:
+
+```json
+{
+  "env": "team1",
+  "type": "TRANSACTION",
+  "owner": { "yentaId": "…", "officeId": "…", "teamId": "…?", "ratio": 60 },
+  "location": { "street": "…", "city": "…", "state": "NEW_YORK", "zip": "10022", "yearBuilt": 2011, "mlsNumber": "N/A" },
+  "priceAndDates": { "dealType": "SALE", "representationType": "BUYER", "salePrice": {…}, "saleCommission": {…}, "acceptanceDate": "…", "closingDate": "…" },
+  "buyerSeller": { "sellers": [ {"firstName":"Unknown","lastName":"Seller","address":"…"} ], "buyers": [ {"firstName":"Unknown","lastName":"Buyer","address":"…"} ] },
+  "partners": [ { "kind": "internal", "agentId": "…", "ratio": 40 } ],
+  "referral": { "kind": "internal", "agentId": "…", "percent": 25 },
+  "commission": { "gross": { "amount": "20000", "currency": "USD" } },
+  "commissionPayer": null,
+  "fmls": null
+}
+```
+
+**Before the call** (still Claude's job, policy-layer):
+- Run the G2a interpretation gate if raw %s don't sum to 100.
+- Call `compute_commission_splits` with placeholder keys to preview numbers + run G2b type-to-confirm if `renormalized: true`.
+- Emit the final preview block.
+
+**After the call**, scan the result for warnings/errors. On `ok: true`, run step 11 (learn from the run) and step 13 (return draftUrl). G5 verification already ran server-side — if it failed, the call returned `ok: false` with stage `verify_splits`.
+
+**Failure path** — when `create_full_draft` returns `ok: false`:
+- `error.body.builderId` populated → partial draft exists. Offer `/resume-draft {builderId}` (fill gaps) or `/delete-draft {builderId}` (clean up).
+- `error.body.completedSteps` shows exactly which server-side writes succeeded before the failure.
+- `error.body.nextStage` names the first stage that DIDN'T run — points at what needs fixing.
+- Map `error.message` against `memory/error-messages.md` before surfacing.
+
+**Fallback — granular chain.** Use only when `create_full_draft` can't handle the shape or for targeted recovery:
 
 1. `create_draft_with_essentials` → `builderId`
-2. `add_partner_agent` (per partner; `side=DUAL` handles twice-registration)
+2. `add_partner_agent` per partner (`side=DUAL` handles twice-registration)
 3. `add_referral` (internal vs external; uploads W9 if path provided)
-4. `compute_commission_splits` (re-run now with real participant ids assigned by arrakis)
-5. `set_commission_splits` with the output of #4
-6. `verify_draft_splits` immediately — any drift, **stop**
-7. `finalize_draft` (opcity/personal-deal/additional-fees/commission-payer/title/FMLS)
-8. `get_draft` → returns `draftUrl`
+4. `compute_commission_splits` with real participant ids from `get_draft`
+5. `set_commission_splits`
+6. `verify_draft_splits` — any drift, **stop**
+7. `finalize_draft`
 
-Drop to granular tools if a convenience tool errors.
+Known triggers for falling back:
+- `representationType == "DUAL"` — `create_full_draft` returns `NOT_IMPLEMENTED_DUAL`; use the granular chain with `side=DUAL` on `add_partner_agent`.
+- External (non-Real) partners — `create_full_draft`'s MVP only wires internal partners. External partners go through `add_partner_agent {kind: "external"}`.
+- Seller-side TRANSACTION built from an existing listing — call `build_transaction_from_listing` first to get the txn builderId, then use `update_*` granular tools to fill transaction-only fields.
 
 ### 10. Error handling with self-healing (A9)
 

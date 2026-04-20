@@ -84,31 +84,6 @@ export const startListingFlow = defineTool({
   },
 });
 
-export const startReferralFlow = defineTool({
-  name: "start_referral_flow",
-  description:
-    "CALL THIS FIRST when the user wants to POST a marketplace referral — 'post a referral', 'find an agent for my client', 'refer out a buyer', 'I have a client looking for …', 'marketplace referral'. Returns the referral runbook. This is DIFFERENT from paying a referral fee on a transaction (that's the regular /create-transaction flow with `add_referral`). Only use this for the marketplace posting flow.",
-  input: z.object({
-    userPrompt: z.string().min(1),
-  }),
-  async handler({ userPrompt }): Promise<
-    ToolResult<{ runbook: string; userPrompt: string; next: string }>
-  > {
-    try {
-      const runbook = await readPromptContent("create_referral");
-      return ok({
-        runbook,
-        userPrompt,
-        next: "Follow the referral runbook. Parse client-type, budget, location, fee, timeline. Call create_marketplace_referral.",
-      });
-    } catch (err) {
-      return fail(
-        `Failed to load create-referral runbook: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  },
-});
-
 export const startResumeDraft = defineTool({
   name: "start_resume_draft",
   description:

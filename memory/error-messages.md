@@ -153,6 +153,9 @@ Never chain auto-retries: one attempt per failure, period.
 - match: "The parameter 'sortBy' of value 'createdAt' could not be converted to type 'List'"
   fix: "Same root cause as the enum-constant error above: MCP is sending sortBy=createdAt to yenta, which rejects it. Fix src/services/YentaApi.ts to send a valid AgentSearchSortBy value."
 
+- match: "\"status\": 403, \"body\": \"\""
+  fix: "403 with empty body from arrakis/yenta usually means VPN to the target env is down, or the session has been revoked by Real (admin bounce or long inactivity). Not a JWT-expiry (that's 401). Check: (a) are you on the Real VPN? (b) does `curl -I https://yenta.team1realbrokerage.com` respond? (c) has your Real admin recently reset sessions? If all green, run `./scripts/diagnose.sh` and retry."
+
 - match: "MCP error -32001: Request timed out"
   fix: "An MCP tool call timed out at the transport layer. For verify_auth, this almost always means the browser-login helper couldn't complete (no browser opened, user didn't finish signing in, or keychain prompt blocked). Re-run the tool; if it keeps timing out, run ./scripts/diagnose.sh and check that the browser-login helper is able to open a window."
 
@@ -161,4 +164,7 @@ Never chain auto-retries: one attempt per failure, period.
 
 - match: "Agent not found by id"
   fix: "arrakis looked up that yentaId in the target env's yenta and got 404. Most likely: (a) the UUID is from a different env (yentaIds don't cross envs), (b) typo, or (c) the agent was deactivated. Double-check the env the ID was copied from, and retry with the correct one. No auto-retry — wrong ID will just 404 again."
+
+- match: "Cannot initialize a CANDIDATE agent"
+  fix: "The yentaId you passed belongs to a CANDIDATE (partially-onboarded) agent. Arrakis refuses to put candidates on a transaction as partners or referrals. Pick a different agent (status=ACTIVE) from search_agent_by_name results, or switch to an EXTERNAL referral (kind=external) if they're not yet a Real agent. The partial draft is intact — use the granular add_referral tool on the existing builderId to continue."
 ```

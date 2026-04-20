@@ -13,7 +13,7 @@ import {
  *   - arrakis TransactionBuilder.validate() (service-layer rules)
  *   - arrakis ListingGeneralValidator (listing participant rules)
  *   - arrakis DualRepresentationAgentCommissionValidation (DUAL rules)
- *   - arrakis CreateReferralHandlerTest (marketplace referral canonical shape)
+ *   - arrakis CreateReferralHandlerTest (referral participant canonical shape)
  *   - Live Playwright walkthrough of Bolt (UI-level requirements noted as
  *     "conditional" gaps rather than blockers).
  *

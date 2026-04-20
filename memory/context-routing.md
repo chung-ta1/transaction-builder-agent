@@ -49,7 +49,6 @@ When steps 1–3 conflict with step 5 — **steps 1–3 win.** Keywords lie; con
 | Context | Resolution |
 |---|---|
 | Active transaction draft in focus | `add_referral` (line item on that draft) |
-| Fresh session + "post a referral" / "find an agent for my client" | `/create-referral` (marketplace) |
 | Fresh session + "record a referral payment" / termination-fee / BPO signals | `/create-referral-payment` |
 
 ### "my partner {name}"

@@ -43,12 +43,6 @@ export const prompts: PromptDef[] = [
     file: join(__dirname, "create_listing.md"),
   },
   {
-    name: "create_referral",
-    description:
-      "Post a marketplace referral (`ReferralCentralReferralDto`). Triggered when the user has a client looking for X in location Y and wants to match to another agent for a fee.",
-    file: join(__dirname, "create_referral.md"),
-  },
-  {
     name: "create_referral_payment",
     description:
       "Create a referral-payment transaction (the 'Create Referral / Payment' button in Bolt). One-shot arrakis `POST /agent/{id}/referral-and-disburse`; no draft stage, so the runbook enforces an in-chat preview + explicit confirm before firing.",

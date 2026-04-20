@@ -15,8 +15,9 @@ Arrakis manages four first-class concepts:
    `NEW → NEEDS_COMMISSION_VALIDATION → COMMISSION_VALIDATED → …(doc generation)… → APPROVED_FOR_CLOSING → CLOSED → SETTLED`.
 3. **Listing** — a submitted listing agreement. Lifecycle:
    `LISTING_ACTIVE → LISTING_IN_CONTRACT → LISTING_CLOSED` (or `TERMINATED`).
-4. **Referral** (marketplace) — a posted client-handoff request.
-   `POSTED / PAUSED / ACCEPTED`.
+4. **Referral payment** — a standalone referral/fee record on Real's books
+   (the "Create Referral / Payment" button in Bolt). Handled end-to-end by
+   `/create-referral-payment`; no draft stage.
 
 ## Listing ⇄ Transaction relationship
 
@@ -93,11 +94,11 @@ Optional follow-up: user can say "submit it" → `submit_draft`.
 5. Ask only about the delta
 6. Fill + finalize
 
-### User: "post a referral" (marketplace)
+### User: "record a referral payment"
 1. `pre_flight`
-2. Parse: client type, budget, location, fee, timeline
-3. One AskUserQuestion if coords/timeline/expiration missing
-4. `create_marketplace_referral`
+2. Parse classification (REFERRAL vs OTHER / Non-Referral Payment), parties, amount
+3. AskUserQuestion for missing fields
+4. `create_referral_payment`
 
 ## State-inspection rule
 

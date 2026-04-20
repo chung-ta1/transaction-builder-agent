@@ -267,20 +267,7 @@ listing_prereqs_user_should_have_ready:
 - MCP handles this via existing `create_draft_with_essentials` +
   `add_referral` / `add_internal_referral` / `add_external_referral` tools.
 
-### Flavor 2: standalone referral marketplace (`POST /api/v1/referrals`)
-- Creates a `ReferralCentralReferralDto` — a marketplace listing for "I have
-  a client looking for X in Y location, commission Z%".
-- `required`: applicantAgentIds, referralFeePercentage, priceRange,
-  locations, referralAgentId, expirationDate, languages, timeline, clientType,
-  status.
-- `timeline` enum: `FROM_0_TO_3_MONTHS, FROM_3_TO_6_MONTHS, FROM_6_TO_12_MONTHS, UNKNOWN`.
-- `clientType` enum: `BUYER, SELLER, TENANT, LANDLORD`.
-
-The MCP does NOT currently support Flavor 2 (marketplace referrals). If a user
-wants that, direct them to Bolt's referral-central page. Otherwise,
-referral-as-deal-type covers 95% of use cases.
-
-### Flavor 3: agent-level referral (`POST /api/v1/agent/{yentaId}/referral`)
+### Flavor 2: agent-level referral (`POST /api/v1/agent/{yentaId}/referral`)
 - `ReferralRequest` shape. `required`: expectedCloseDate.
 - Simpler flow — agent-to-agent referral outside of a transaction context.
 - Not in current MCP scope.

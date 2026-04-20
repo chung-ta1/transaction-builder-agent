@@ -34,14 +34,27 @@ export class BaseApi {
   }
 
   /**
-   * Make a request with auth + 401 retry. Throws ApiError on non-2xx.
+   * Make a request with auth + 401/403 retry. Throws ApiError on non-2xx.
+   *
+   * 401 = unauthenticated (token missing/malformed) — always re-auth.
+   * 403 = forbidden. Two flavors:
+   *   (a) authenticated but not authorized for this resource — arrakis
+   *       returns a real error body like "You cannot assign a commission
+   *       split to a domestic team member". Don't re-auth, throw as-is.
+   *   (b) token revoked / stale session — Real's ingress/keymaker layer
+   *       returns 403 with an EMPTY body (no JSON message). We can't
+   *       distinguish this at the HTTP layer, but the empty-body signal
+   *       is reliable in practice. Treat as auth failure and re-auth.
+   *
+   * Verified 2026-04-20: a multi-day-stale JWT against yenta team1
+   * produced 403 with empty body; user had to restart Claude Code to
+   * recover. This retry path fixes that.
    */
   protected async request<T>(env: Env, config: AxiosRequestConfig): Promise<T> {
     const first = await this.attempt<T>(env, config, false);
-    if (first.status !== 401) {
+    if (!shouldReauth(first)) {
       return this.unwrap<T>(first);
     }
-    // 401 → invalidate, fetch fresh, retry exactly once.
     await this.auth.invalidate(env);
     const retry = await this.attempt<T>(env, config, true);
     return this.unwrap<T>(retry);
@@ -71,6 +84,22 @@ export class BaseApi {
     }
     throw new ApiError(res.status, messageOf(res), res.data);
   }
+}
+
+function shouldReauth(res: AxiosResponse): boolean {
+  if (res.status === 401) return true;
+  if (res.status !== 403) return false;
+  // 403 with an empty body is the signature of a revoked/stale token at
+  // Real's auth layer. 403 with a real authorization message (arrakis's
+  // own authz rules) has a body — leave those alone.
+  const body = res.data;
+  if (body == null) return true;
+  if (typeof body === "string") return body.trim().length === 0;
+  if (typeof body === "object") {
+    const obj = body as Record<string, unknown>;
+    return !(obj.message ?? obj.error ?? obj.detail);
+  }
+  return false;
 }
 
 function messageOf(res: AxiosResponse): string {

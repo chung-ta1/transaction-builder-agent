@@ -10,7 +10,6 @@ import { AuthService } from "./auth/AuthService.js";
 import { TokenCache } from "./auth/TokenCache.js";
 import { SUPPORTED_ENVS } from "./config.js";
 import { prompts, readPromptContent } from "./prompts/index.js";
-import { ReferralCentralApi } from "./services/ReferralCentralApi.js";
 import { ReferralPaymentApi } from "./services/ReferralPaymentApi.js";
 import { TransactionBuilderApi } from "./services/TransactionBuilderApi.js";
 import { YentaAgentApi } from "./services/YentaAgentApi.js";
@@ -88,7 +87,6 @@ export function createServer(): CreatedServer {
     auth,
     arrakis: new TransactionBuilderApi(auth),
     yenta: new YentaAgentApi(auth),
-    referralCentral: new ReferralCentralApi(auth),
     referralPayment: new ReferralPaymentApi(auth),
   };
 

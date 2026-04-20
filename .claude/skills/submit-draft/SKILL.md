@@ -84,7 +84,7 @@ Show the live transaction (not the draft). Template:
 
 > **View transaction:** https://bolt.{env}realbrokerage.com/transactions/{transactionId}/detail
 
-For a listing, the marketplace URL is:
+For a listing, the Bolt URL is:
 
 > **View listing:** https://bolt.{env}realbrokerage.com/listing/{listingId}
 
