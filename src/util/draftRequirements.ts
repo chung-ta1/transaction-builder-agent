@@ -17,7 +17,7 @@ import type { Env } from "../config.js";
  * calls and applies defaults silently.
  */
 
-// Enum values authoritative from arrakis OpenAPI spec. Do not invent values;
+// Enum values synced by hand from the arrakis source. Do not invent values;
 // arrakis rejects anything outside these sets.
 export type DealType =
   | "SALE" | "LEASE" | "REFERRAL"
@@ -508,7 +508,7 @@ function requireOwner(a: DraftAnswers, blockers: Blocker[]): void {
 
 function requireTeam(_a: DraftAnswers, _blockers: Blocker[]): void {
   // NO-OP (kept as doc). Earlier version blocked when teamId was missing.
-  // Corrected per arrakis OpenAPI: teamId is OPTIONAL on
+  // Corrected per arrakis source: teamId is OPTIONAL on
   // TransactionOwnerAgentInfoRequest. arrakis saves the draft fine without
   // it. Bolt's step 4 UI does mark Team as `*`-required, so the user will
   // need to pick one in Bolt before submitting — but that's a UI-level

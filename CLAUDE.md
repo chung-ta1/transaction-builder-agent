@@ -30,14 +30,13 @@ transaction-agent/
 │   │   ├── convenience/                  # 4 batched happy-path tools
 │   │   ├── Tool.ts                       # common types + result shape
 │   │   └── index.ts                      # combined registry (convenience first)
-│   ├── types/
-│   │   ├── enums.ts                      # mirrors arrakis enums
-│   │   └── schemas.ts                    # zod schemas per tool input
-│   └── openapi/{arrakis,keymaker,yenta}  # generated clients (run `npm run generate`)
+│   └── types/
+│       ├── enums.ts                      # mirrors arrakis enums
+│       └── schemas.ts                    # zod schemas per tool input
 ├── test/                                 # vitest
-├── package.json, tsconfig.json, openapitools.json
+├── package.json, tsconfig.json
 ├── Dockerfile, docker-compose.yml
-└── .github/workflows/{build,drift-sync}.yml
+└── .github/workflows/build.yml
 ```
 
 ## Where to add things
@@ -59,10 +58,9 @@ transaction-agent/
 
 ## When arrakis changes
 
-Two layers catch drift:
+**Memory drift-check** runs on every `/create-transaction`: compares `memory/arrakis-pin.md:last-synced-sha` against `github.com/Realtyka/arrakis` default branch. Only mutates `arrakis-pin.md` when watched paths have actually changed — the pin advances together with the `transaction-rules.md` rule updates, so no per-user timestamp churn, no merge conflicts.
 
-1. **Memory drift-check** (throttled 24h, runs on every `/create-transaction`): compares `memory/arrakis-pin.md:last-synced-sha` against `github.com/Realtyka/arrakis` default branch. On drift in watched paths, updates `memory/transaction-rules.md` (tagged bullets only) and advances the pin.
-2. **OpenAPI codegen** (`npm run generate`): pulls types from arrakis stage's live spec. Schema drift = TypeScript compile error. Nightly CI opens a `arrakis-drift` PR automatically.
+Enum and schema values in `src/types/{enums,schemas}.ts` and `src/util/draftRequirements.ts` are synced manually from the arrakis source. When you see the drift-check flag a change in one of those files, update the TypeScript mirror by hand.
 
 ## Testing
 

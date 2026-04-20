@@ -7,7 +7,7 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
-      exclude: ["test/**", "dist/**", "src/openapi/**"],
+      exclude: ["test/**", "dist/**"],
     },
   },
 });

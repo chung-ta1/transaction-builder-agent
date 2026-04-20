@@ -8,8 +8,7 @@
 #   3b. Bootstraps runtime memory files from .template versions (first-run)
 #   4. Smoke-tests the built MCP (confirms tools load via stdio)
 #   5. Kills any stale MCP processes so Claude reconnects to the fresh binary
-#   6. Cleans up legacy subagent files that cause tool-context issues
-#   7. Registers with Claude Desktop AND Claude CLI / Claude Code globally
+#   6. Registers with Claude Desktop AND Claude CLI / Claude Code globally
 #
 # Safe to re-run. Idempotent.
 
@@ -91,37 +90,12 @@ else
 fi
 echo ""
 
-# ---- 6. Remove legacy subagent that breaks MCP tool inheritance ----
-echo "→ Cleaning up legacy subagent files (if any)…"
-REMOVED=0
-LEGACY_GLOBAL="$HOME/.claude/agents/transaction-creator.md"
-if [[ -L "$LEGACY_GLOBAL" || -f "$LEGACY_GLOBAL" ]]; then
-  rm -f "$LEGACY_GLOBAL"
-  echo "  ✗ Removed $LEGACY_GLOBAL"
-  REMOVED=1
-fi
-LEGACY_LOCAL=".claude/agents/transaction-creator.md"
-if [[ -f "$LEGACY_LOCAL" ]]; then
-  rm -f "$LEGACY_LOCAL"
-  echo "  ✗ Removed $LEGACY_LOCAL"
-  REMOVED=1
-fi
-if [[ -d .claude/agents ]] && [[ -z "$(ls -A .claude/agents 2>/dev/null)" ]]; then
-  rmdir .claude/agents
-fi
-if [[ "$REMOVED" -eq 0 ]]; then
-  echo "✓ Nothing to clean."
-else
-  echo "✓ Legacy subagent files cleared — the skill now runs inline in the main chat."
-fi
-echo ""
-
-# ---- 7. Register with Claude Desktop + Claude CLI ----
+# ---- 6. Register with Claude Desktop + Claude CLI ----
 echo "→ Registering with Claude Desktop + Claude CLI…"
 ./scripts/install-config.sh
 echo ""
 
-# ---- 8. Detect running Claude sessions that must be restarted ----
+# ---- 7. Detect running Claude sessions that must be restarted ----
 # The MCP handshake happens once, at session start. Any Claude Code or
 # Claude Desktop session that was already running when setup.sh finished
 # will NOT see the newly-registered tools — no matter what `claude mcp list`

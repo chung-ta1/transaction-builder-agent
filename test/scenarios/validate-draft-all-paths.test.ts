@@ -9,7 +9,7 @@ import {
  * Exhaustive coverage of every transaction / listing / referral path through
  * the validator. Asserts both positive paths (ready=true) and negative paths
  * (expected gaps/blockers). Authoritative inputs from:
- *   - arrakis OpenAPI spec (required fields per request DTO)
+ *   - arrakis request DTOs (required fields)
  *   - arrakis TransactionBuilder.validate() (service-layer rules)
  *   - arrakis ListingGeneralValidator (listing participant rules)
  *   - arrakis DualRepresentationAgentCommissionValidation (DUAL rules)
@@ -313,7 +313,7 @@ describe("validateDraft — Transaction flows", () => {
         },
         owner: { yentaId: FAKE_OWNER.yentaId, officeId: FAKE_OWNER.officeId }, // no teamId
       });
-      // Must not have owner.teamId in blockers (relaxed after OpenAPI review)
+      // Must not have owner.teamId in blockers (relaxed after arrakis review)
       expect(blockerFields(r)).not.toContain("owner.teamId");
     });
   });

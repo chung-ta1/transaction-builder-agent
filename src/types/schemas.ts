@@ -37,8 +37,8 @@ export const participantRoleSchema = z.enum([
 
 export const participantTypeSchema = z.enum(["EXTERNAL_ENTITY", "AGENT"]);
 
-// Authoritative values from arrakis OpenAPI spec
-// (https://arrakis.stagerealbrokerage.com/v3/api-docs/arrakis-public).
+// Authoritative values synced by hand from the arrakis source
+// (arrakis-core/src/main/java/com/real/arrakis/domain/transaction/DealType.java).
 // A prior version had SALE/LEASE/REFERRAL only — arrakis actually accepts
 // 8 dealTypes, and rejects unknown values at write time.
 export const dealTypeSchema = z.enum([

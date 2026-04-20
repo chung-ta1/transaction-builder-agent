@@ -12,8 +12,6 @@
     "dev": "tsc --watch",
     "lint": "tsc --noEmit",
     "start": "node dist/index.js",
-    "generate": "openapi-generator-cli generate",
-    "sync": "./scripts/sync-arrakis.sh",
     "install-config": "./scripts/install-config.sh",
     "test": "vitest --watch=false",
     "test:watch": "vitest",
@@ -30,7 +28,6 @@
     "zod-to-json-schema": "^3.24.1"
   },
   "devDependencies": {
-    "@openapitools/openapi-generator-cli": "^2.18.4",
     "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^2.1.8",
     "typescript": "^5.5.4",

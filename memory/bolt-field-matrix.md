@@ -1,9 +1,9 @@
 # Field Matrix — Transactions, Referrals, Listings
 
-**Source of truth:** arrakis OpenAPI spec
-(`https://arrakis.stagerealbrokerage.com/v3/api-docs/arrakis-public`), pulled
-2026-04-17. This matrix captures what the **arrakis API** requires. A second
-layer — what **Bolt's UI** enforces — is noted separately. They differ:
+**Source of truth:** arrakis source (request DTOs in
+`arrakis-core/src/main/java/com/real/arrakis/commons/request/`), synced
+by hand 2026-04-17. This matrix captures what the **arrakis API** requires. A
+second layer — what **Bolt's UI** enforces — is noted separately. They differ:
 
 - **arrakis API** = what will actually save. If you don't send it, arrakis
   returns a 400. This is what the MCP must enforce to produce a valid draft.
