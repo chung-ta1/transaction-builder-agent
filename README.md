@@ -8,9 +8,12 @@
 |---|---|---|
 | `/create-transaction` | Draft a sale or lease — buyer-side, seller-side, or DUAL. Seller-side auto-chains listing → submit → transition → transaction. | "Add Transaction" |
 | `/create-listing` | Draft a standalone listing (no buyer yet). | "Add Listing" |
-| `/create-referral` | Post a client hand-off on Referral Central for another Real agent to pick up. | "Partners & Agent Marketplace" → post |
 | `/create-referral-payment` | Record a referral fee or Non-Referral Payment (termination fee, BPO, spiff, …) as its own transaction on Real's books. | "Create Referral / Payment" |
-| `/resume-draft` | Pick up a half-finished draft and fill what's missing without clobbering the parts that are already right. | — |
+| `/list-drafts` | Show every in-flight draft (transactions + listings you haven't submitted yet). | "Drafts" tab |
+| `/resume-draft` | Pick up a half-finished draft and fill what's missing without clobbering what's already right. | — |
+| `/update-draft` | Edit a specific field on an existing draft (price, commission, team, participants, dates, …). | Editing inside the draft |
+| `/submit-draft` | Promote a draft to a live Transaction (or a Listing to `LISTING_ACTIVE`). Always preceded by a preview. | "Create Transaction" / "Create Listing" button |
+| `/delete-draft` | Permanently delete an unsubmitted draft from arrakis. | Delete from drafts list |
 | `/sync-rules` | Force a fresh rebuild of the arrakis rulebook from source (usually automatic — you rarely need this). | — |
 
 In practice you don't type any slash — Claude recognizes natural phrasing ("create a transaction for…", "new listing at…", "record a $500 termination fee…") and picks the right flow.
@@ -21,7 +24,7 @@ Both work. **Claude CLI is what we recommend** for the smoothest experience:
 
 - Slash commands and skills are first-class in CLI (`/create-transaction`, `/resume-draft`, etc.).
 - **Bypass-permissions mode in CLI collapses the usual "Create this?" gate into a single-turn preview-then-fire** — the preview is the review step; if anything looks wrong you interrupt with `Esc` before the tool call lands.
-- Memory files under `~/.claude/projects/.../memory/` persist across sessions so the agent learns your defaults (typical env, typical team, typical year built, frequent partners, MLS format) and stops re-asking.
+- Memory files under `~/.claude/projects/.../memory/` persist across sessions so the agent learns your defaults (typical env, typical team, typical year built, `learned_agents` cache for partners / referrals, recent MLS numbers) and stops re-asking.
 
 Claude Desktop works too — flows and previews render the same way; the only differences are (a) slash commands come from the `+` menu rather than typing `/`, and (b) confirmation gates appear as clickable buttons instead of being skipped via bypass-permissions.
 
@@ -134,12 +137,6 @@ Currency auto-resolves to CAD from the postal code.
 
 Produces a LISTING_ACTIVE draft you can later convert to a transaction via seller-side `/create-transaction`.
 
-### Marketplace referral (client hand-off)
-
-> *"Post a referral: my buyer wants a $500k–$750k house in Austin TX, 25% referral fee, timeline 3 months."*
-
-Goes to Referral Central; other Real agents see and apply.
-
 ### Referral payment — External Referral
 
 > *"Record a $2,500 referral payment from Jane Smith at Keller Williams Downtown, client Michael Brown, expected close May 30 2026."*
@@ -172,7 +169,7 @@ You rarely need this — the skill auto-checks arrakis for rule drift at the sta
 
 ## What makes it smooth (behind the scenes)
 
-- **Memory files** (`memory/*.md`) learn your defaults — typical env, typical office, typical year built, teams you're on, frequent partners, recent MLS numbers, external agents you've paid. On run #2 onward, most questions just don't happen.
+- **Memory files** (`memory/*.md`) learn your defaults — typical env, typical office, typical year built, teams you're on, `learned_agents` (name/alias → yentaId for partners and referrals), recent MLS numbers. On run #2 onward, most questions just don't happen.
 - **Aggressive post-auth prewarming** — when the MCP starts, it validates every cached env token against yenta in parallel so the first `verify_auth` call in your session is instant.
 - **Validator-driven gap detection** — `validate_draft_completeness` is a pure function returning deterministic `{ready, gaps, defaults, blockers}`. Claude doesn't reason about requirements; it calls the validator.
 - **Commission math in integer cents** — `compute_commission_splits` handles money. LLMs don't. The post-write `verify_draft_splits` guard fails loud if anything drifted.
@@ -208,7 +205,7 @@ Every flow starts with a drift-check against `github.com/Realtyka/arrakis`. If a
 - `src/prompts/*.md` — single source of truth for all skill runbooks.
 - `src/tools/` — granular tools (one per arrakis endpoint) + convenience tools (compositions).
 - `src/util/draftRequirements.ts` — validator.
-- `memory/` — learned patterns, error maps, pinned arrakis SHA, audit log.
+- `memory/` — agent playbook (committed): `transaction-rules.md`, `context-routing.md`, `arrakis-system-model.md`, `arrakis-pin.md`, `error-messages.md`, `post-submit-warnings.md`, `bolt-field-matrix.md`. Per-user state (`user-preferences.md`, `user-patterns.md`) is gitignored and bootstrapped from `*.md.template` on first `setup.sh` run.
 - `test/` — vitest unit + scenario tests (97 passing as of this writing).
-- `npm run build` → codegen + tsc + regenerate `.claude/skills/` wrappers.
+- `npm run build` → regenerate `.claude/skills/` wrappers from `src/prompts/*.md`, then `tsc`. No OpenAPI codegen; arrakis types are hand-synced.
 - `scripts/smoke-mcp.sh` — spawns the MCP over stdio and validates `tools/list` returns no `$ref`, no `$schema`, all roots `type: "object"`.
