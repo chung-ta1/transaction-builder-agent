@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * MCP prompts exposed by the transaction-agent server. Each one points at a
+ * MCP prompts exposed by the transaction-builder-agent server. Each one points at a
  * markdown file under this directory which is the single source of truth for
  * the runbook it contains. The CLI skill + subagent files are generated from
  * the same sources (see scripts/gen-cli-wrappers.sh).
@@ -27,7 +27,7 @@ export const prompts: PromptDef[] = [
   {
     name: "sync_rules",
     description:
-      "Force a full rebuild of the transaction-agent rulebook from Real's source code, ignoring the usual drift-check throttle.",
+      "Force a full rebuild of the transaction-builder-agent rulebook from Real's source code, ignoring the usual drift-check throttle.",
     file: join(__dirname, "sync_rules.md"),
   },
   {

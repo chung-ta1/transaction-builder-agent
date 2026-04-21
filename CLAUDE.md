@@ -1,11 +1,11 @@
 # CLAUDE.md — in-repo guidance
 
-This file is loaded by Claude Code when it opens the `transaction-agent` repo. It supplements the project's public README with the internal map a coding assistant needs.
+This file is loaded by Claude Code when it opens the `transaction-builder-agent` repo. It supplements the project's public README with the internal map a coding assistant needs.
 
 ## Project shape at a glance
 
 ```
-transaction-agent/
+transaction-builder-agent/
 ├── .claude/
 │   ├── settings.json                     # registers the MCP
 │   ├── skills/

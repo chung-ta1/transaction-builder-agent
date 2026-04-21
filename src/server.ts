@@ -93,7 +93,7 @@ export function createServer(): CreatedServer {
   const byName = new Map<string, Tool>(allTools.map((t) => [t.name, t]));
 
   const server = new Server(
-    { name: "transaction-agent", version: "0.1.0" },
+    { name: "transaction-builder-agent", version: "0.1.0" },
     { capabilities: { tools: {}, prompts: {} } },
   );
 
@@ -149,20 +149,20 @@ export function createServer(): CreatedServer {
         inputSchema: finalSchema,
       };
     });
-    console.error(`[transaction-agent] tools/list: returning ${tools.length} tools`);
-    console.error(`[transaction-agent] tools with wrapped-union roots: ${diagnostics.filter((d) => d.wrappedUnion).map((d) => d.name).join(", ") || "(none)"}`);
-    console.error(`[transaction-agent] tools with flattened top-level combinators: ${diagnostics.filter((d) => d.flattenedCombinator).map((d) => d.name).join(", ") || "(none)"}`);
-    console.error(`[transaction-agent] tools that had $schema stripped: ${diagnostics.filter((d) => d.hadSchema).length}/${tools.length}`);
+    console.error(`[transaction-builder-agent] tools/list: returning ${tools.length} tools`);
+    console.error(`[transaction-builder-agent] tools with wrapped-union roots: ${diagnostics.filter((d) => d.wrappedUnion).map((d) => d.name).join(", ") || "(none)"}`);
+    console.error(`[transaction-builder-agent] tools with flattened top-level combinators: ${diagnostics.filter((d) => d.flattenedCombinator).map((d) => d.name).join(", ") || "(none)"}`);
+    console.error(`[transaction-builder-agent] tools that had $schema stripped: ${diagnostics.filter((d) => d.hadSchema).length}/${tools.length}`);
     const payloadBytes = JSON.stringify({ tools }).length;
-    console.error(`[transaction-agent] tools/list payload size: ${payloadBytes} bytes`);
+    console.error(`[transaction-builder-agent] tools/list payload size: ${payloadBytes} bytes`);
     return { tools };
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    console.error(`[transaction-agent] tools/call: ${req.params.name}`);
+    console.error(`[transaction-builder-agent] tools/call: ${req.params.name}`);
     const tool = byName.get(req.params.name);
     if (!tool) {
-      console.error(`[transaction-agent] tools/call: unknown tool ${req.params.name}`);
+      console.error(`[transaction-builder-agent] tools/call: unknown tool ${req.params.name}`);
       return {
         isError: true,
         content: [{ type: "text", text: `Unknown tool: ${req.params.name}` }],
@@ -254,6 +254,6 @@ export async function prewarmAuth(ctx: ToolContext): Promise<void> {
     }),
   );
   if (warmed.length > 0) {
-    console.error(`[transaction-agent] auth pre-warm: hot envs = ${warmed.join(", ")}`);
+    console.error(`[transaction-builder-agent] auth pre-warm: hot envs = ${warmed.join(", ")}`);
   }
 }

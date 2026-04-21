@@ -56,7 +56,7 @@ export function assertNotProduction(env: string): asserts env is Env {
   if (domain.toLowerCase().includes(PRODUCTION_HOSTNAME)) {
     throw new InvalidEnvError(
       `Environment "${env}" resolves to the production hostname (${PRODUCTION_HOSTNAME}). ` +
-        "transaction-agent is permanently blocked from production.",
+        "transaction-builder-agent is permanently blocked from production.",
     );
   }
 }

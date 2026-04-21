@@ -1,4 +1,4 @@
-# transaction-agent
+# transaction-builder-agent
 
 **Create transactions, listings, and referrals in Real by describing them in plain English.** You type what the deal looks like, Claude builds the draft, you review in Bolt and submit.
 
@@ -23,8 +23,8 @@ No slash required — Claude recognizes natural phrasing ("create a transaction 
 > Need Claude? [Claude CLI](https://docs.claude.com/en/docs/claude-code/overview) (recommended) or [Claude Desktop](https://claude.ai/download). Need Node.js? Install the LTS version from [nodejs.org](https://nodejs.org).
 
 ```bash
-git clone https://github.com/chung-ta1/transaction-agent.git
-cd transaction-agent
+git clone https://github.com/chung-ta1/transaction-builder-agent.git
+cd transaction-builder-agent
 ./setup.sh
 ```
 

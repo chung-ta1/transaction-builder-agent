@@ -63,7 +63,7 @@ export const preFlight = defineTool({
         });
       }
       auth.startLogin(env).catch((err) => {
-        console.error(`[transaction-agent] background login failed for ${env}:`, err);
+        console.error(`[transaction-builder-agent] background login failed for ${env}:`, err);
       });
       return ok({
         auth: {

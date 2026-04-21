@@ -42,7 +42,7 @@ export const verifyAuth = defineTool({
       // The promise lives on AuthService.inFlight; the next getBearer call
       // (from any authenticated tool) will await it.
       auth.startLogin(env).catch((err) => {
-        console.error(`[transaction-agent] background login failed for ${env}:`, err);
+        console.error(`[transaction-builder-agent] background login failed for ${env}:`, err);
       });
       return ok({
         authenticated: false,

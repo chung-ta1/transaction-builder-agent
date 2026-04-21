@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-shot setup for transaction-agent. Run from the project root.
+# One-shot setup for transaction-builder-agent. Run from the project root.
 #
 # Does everything:
 #   1. Verifies Node.js is installed
@@ -16,7 +16,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-echo "transaction-agent setup"
+echo "transaction-builder-agent setup"
 echo "======================="
 echo ""
 
@@ -79,10 +79,10 @@ echo ""
 
 # ---- 5. Kill stale MCP processes ----
 echo "→ Cleaning up any stale MCP processes from a previous install…"
-STALE=$(pgrep -fl "node.*transaction-agent/dist/index" 2>/dev/null || true)
+STALE=$(pgrep -fl "node.*transaction-builder-agent/dist/index" 2>/dev/null || true)
 if [[ -n "$STALE" ]]; then
   STALE_COUNT=$(echo "$STALE" | wc -l | tr -d ' ')
-  pkill -f "node.*transaction-agent/dist/index" 2>/dev/null || true
+  pkill -f "node.*transaction-builder-agent/dist/index" 2>/dev/null || true
   sleep 0.5
   echo "✓ Killed $STALE_COUNT stale MCP process(es). Claude will start a fresh one on next launch."
 else

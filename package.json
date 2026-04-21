@@ -1,9 +1,9 @@
 {
-  "name": "transaction-agent",
+  "name": "transaction-builder-agent",
   "version": "0.1.0",
   "description": "MCP server + Claude agent for creating Real Brokerage draft transactions from English prompts",
   "bin": {
-    "transaction-agent": "./dist/index.js"
+    "transaction-builder-agent": "./dist/index.js"
   },
   "type": "module",
   "scripts": {
@@ -16,7 +16,7 @@
     "test": "vitest --watch=false",
     "test:watch": "vitest",
     "test:contract": "RUN_CONTRACT_TESTS=1 vitest --watch=false test/contract",
-    "docker:build": "docker build -t transaction-agent ."
+    "docker:build": "docker build -t transaction-builder-agent ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4",

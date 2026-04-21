@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wires transaction-agent into Claude — Desktop (via claude_desktop_config.json)
+# Wires transaction-builder-agent into Claude — Desktop (via claude_desktop_config.json)
 # AND Claude CLI / Claude Code (via ~/.claude/settings.json + symlinks to
 # ~/.claude/skills). Creates config files if missing, merges cleanly if they
 # exist. Idempotent — safe to re-run.

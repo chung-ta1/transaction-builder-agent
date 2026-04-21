@@ -16,7 +16,7 @@ function installOrphanWatchdog(onExit: () => Promise<void>): void {
     try { await onExit(); } catch { /* best-effort */ }
     // stderr so we show up in Claude's MCP log during debugging but don't
     // pollute the JSON-RPC stream on stdout.
-    console.error(`[transaction-agent] exiting: ${reason}`);
+    console.error(`[transaction-builder-agent] exiting: ${reason}`);
     process.exit(0);
   };
 
@@ -44,7 +44,7 @@ async function main(): Promise<void> {
   // Failures are swallowed (stderr only) — pre-warmup must never block or
   // crash the MCP on startup.
   prewarmAuth(ctx).catch((err) => {
-    console.error("[transaction-agent] auth pre-warmup failed (non-fatal):", err);
+    console.error("[transaction-builder-agent] auth pre-warmup failed (non-fatal):", err);
   });
 
   const shutdown = async (): Promise<void> => { await server.close(); };
@@ -62,6 +62,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("[transaction-agent] Fatal error:", err);
+  console.error("[transaction-builder-agent] Fatal error:", err);
   process.exit(1);
 });

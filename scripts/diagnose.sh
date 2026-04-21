@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Diagnose the transaction-agent install. Prints the state of:
+# Diagnose the transaction-builder-agent install. Prints the state of:
 #   - Claude Desktop MCP config
 #   - Claude CLI global MCP config
 #   - MCP binary health (smoke test)
@@ -13,7 +13,7 @@ set -uo pipefail  # no -e; we want to continue past errors
 cd "$(dirname "$0")/.."
 PROJECT_ROOT="$(pwd)"
 
-echo "transaction-agent diagnose"
+echo "transaction-builder-agent diagnose"
 echo "=========================="
 echo "Project root: $PROJECT_ROOT"
 echo ""
@@ -177,14 +177,14 @@ echo ""
 
 # ---- 7. Orphan node processes ----
 echo "── 7. Orphan node processes ─────────────────────────────────"
-PROCS=$(pgrep -fl "node.*transaction-agent/dist/index" 2>/dev/null || true)
+PROCS=$(pgrep -fl "node.*transaction-builder-agent/dist/index" 2>/dev/null || true)
 if [[ -z "$PROCS" ]]; then
   echo "$(green ✓) No running MCP processes (expected when Claude isn't open)."
 else
   echo "Found running MCP processes:"
   echo "$PROCS"
   echo "If Claude still reports 'tools not loaded', these might be stale."
-  echo "To clean them up: pkill -f 'node.*transaction-agent/dist/index'"
+  echo "To clean them up: pkill -f 'node.*transaction-builder-agent/dist/index'"
 fi
 echo ""
 

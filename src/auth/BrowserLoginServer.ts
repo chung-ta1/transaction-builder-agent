@@ -56,7 +56,7 @@ export async function runBrowserLogin(env: Env, prefillEmail?: string): Promise<
       open(url).catch(() => {
         // If `open` fails we still let the user navigate manually — the URL
         // is surfaced in the error below if nothing happens within the timeout.
-        console.error(`[transaction-agent] Open this URL to sign in: ${url}`);
+        console.error(`[transaction-builder-agent] Open this URL to sign in: ${url}`);
       });
 
       // Wrap the resolve/reject so we clean up server + timer exactly once.

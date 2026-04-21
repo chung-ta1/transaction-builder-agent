@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { platform } from "node:os";
 import type { Env } from "../config.js";
 
-const KEYCHAIN_SERVICE = "transaction-agent.keymaker";
+const KEYCHAIN_SERVICE = "transaction-builder-agent.keymaker";
 const KEYCHAIN_DISABLED = process.env.TRANSACTION_AGENT_NO_KEYCHAIN === "1";
 
 export interface CachedToken {
