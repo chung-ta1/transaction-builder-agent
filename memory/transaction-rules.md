@@ -28,6 +28,7 @@ else is hand-written and won't be overwritten.
 
 - **Agent-country must match property-state country.** `TransactionBuilder.updateAddress` throws if the agent is registered in the USA and the property is in Canada (or vice versa). Surface this as a translated error *before* writing.
 - **Year built is required in the USA.** Optional in Canada.
+- **Year built must NEVER be inferred or defaulted.** User rule (2026-04-21): when `yearBuilt` is missing from the prompt, ask via `AskUserQuestion` as a plain free-text input (no pre-populated options like 2020/2000/1970, no cached `typical_year_built` default). The user must actively type the year on every run. Strip any default options the validator returns for this field.
 - **Currency by state.** US → `USD`. Canadian provinces (`ALBERTA`, `BRITISH_COLUMBIA`, `MANITOBA`, `NEW_BRUNSWICK`, `NEWFOUNDLAND_AND_LABRADOR`, `NOVA_SCOTIA`, `NORTHWEST_TERRITORIES`, `NUNAVUT`, `ONTARIO`, `PRINCE_EDWARD_ISLAND`, `QUEBEC`, `SASKATCHEWAN`, `YUKON`) → `CAD`. Derived from `state`; only confirm if the prompt's dollar symbol contradicts.
 - **FMLS** is only offered/required when `state == GEORGIA` and deal is SALE/LEASE. Skip `update_fmls_info` elsewhere.
 
