@@ -90,12 +90,21 @@ function handle(
   }
   const url = new URL(req.url, "http://127.0.0.1");
 
-  // Restrict same-origin: only requests from this loopback origin allowed to POST.
-  const origin = req.headers.origin;
-  if (origin && !origin.startsWith("http://127.0.0.1") && !origin.startsWith("http://localhost")) {
-    res.statusCode = 403;
-    res.end();
-    return;
+  // CSRF / token-fixation guard for the state-changing POST. The login page's
+  // same-origin fetch("/token") DOES send an Origin header (Fetch spec: non-GET
+  // requests carry Origin); a cross-site no-CORS POST that tries to inject an
+  // attacker bearer either sends a foreign Origin OR — for a simple/no-cors
+  // request — sends NONE. The old guard (`if (origin && !loopback)`) only
+  // rejected the foreign-Origin case and let the no-Origin case through, which
+  // is the real attack. So for POST we REQUIRE a loopback Origin: reject when
+  // it's absent or non-loopback. (GET top-level navigations legitimately omit
+  // Origin, so they stay lenient.)
+  if (req.method === "POST") {
+    if (!isLoopbackOrigin(req.headers.origin)) {
+      res.statusCode = 403;
+      res.end();
+      return;
+    }
   }
 
   if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/login")) {
@@ -123,14 +132,20 @@ function handle(
           res.end("Missing env or accessToken");
           return;
         }
-        res.statusCode = 204;
-        res.end();
-        resolve({
+        const result: LoginResult = {
           env: parsed.env as Env,
           accessToken: parsed.accessToken,
           email: parsed.email,
           remember: parsed.remember !== false,
-        });
+        };
+        // Resolve only AFTER the 204 has flushed to the browser. resolve()
+        // closes the server synchronously (see the wrapper in runBrowserLogin);
+        // closing before the response is sent severs the connection mid-flight,
+        // so the login page's fetch("/token") throws "Failed to fetch" even
+        // though the token was captured. The res.end callback fires once the
+        // response is written, so the browser sees the 204 and shows success.
+        res.statusCode = 204;
+        res.end(() => resolve(result));
       } catch {
         res.statusCode = 400;
         res.end("Invalid JSON");
@@ -142,6 +157,17 @@ function handle(
 
   res.statusCode = 404;
   res.end();
+}
+
+/**
+ * True only for an Origin header that is a loopback http origin
+ * (http://127.0.0.1[:port] or http://localhost[:port]). Returns false when the
+ * header is absent — a state-changing POST must prove same-origin, and the
+ * legitimate login-page fetch always sends it.
+ */
+export function isLoopbackOrigin(origin: string | undefined): boolean {
+  if (!origin) return false;
+  return /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(origin);
 }
 
 function buildLoginUrl(port: number, env: Env, prefillEmail?: string): string {

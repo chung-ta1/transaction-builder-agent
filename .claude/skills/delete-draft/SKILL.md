@@ -17,12 +17,12 @@ The target draft is chosen by context:
 
 Also route differently by state:
 - **Unsubmitted draft** (builder exists, `get_draft` returns 200) → this skill.
-- **Submitted transaction** (builder 404s, user wants to cancel) → use `request_termination`, not delete.
+- **Submitted transaction** (builder 404s, user wants to cancel) → use `set_termination` (state="request"), not delete.
 
 **When to trigger:** user says "delete draft X", "cancel the draft", "throw away the draft", "abandon the draft", "scrap this one".
 
 **When NOT to trigger:**
-- The draft is already SUBMITTED → delete_draft 404s. If the user wants to terminate a submitted transaction, route to `request_termination` (that's the proper post-submit cancel path).
+- The draft is already SUBMITTED → delete_draft 404s. If the user wants to terminate a submitted transaction, route to `set_termination` (state="request") (that's the proper post-submit cancel path).
 - The user wants to modify fields → `/update-draft`.
 - The user wants to start over with a new draft → `/create-transaction` (or the relevant create flow). If they explicitly want BOTH — delete the old AND create a new one — do delete first, then create.
 
@@ -74,7 +74,7 @@ arrakis's `DELETE` is the audit trail. Don't mirror locally.
 
 ## What you never do
 
-- Never call `delete_draft` on a submitted Transaction id — use `request_termination` instead. Submitted transactions return 404 on the builder DELETE.
+- Never call `delete_draft` on a submitted Transaction id — use `set_termination` (state="request") instead. Submitted transactions return 404 on the builder DELETE.
 - Never delete a draft without fetching its state first — you need the preview, and the user might have typo'd the id.
 - Never claim success without checking that the subsequent `get_draft` 404s. (Optional verification step — nice to have.)
 - Never silently delete the parent listing. The listing is a separate resource with its own lifecycle.

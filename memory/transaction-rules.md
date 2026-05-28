@@ -6,6 +6,27 @@ else is hand-written and won't be overwritten.
 
 ---
 
+## Tool surface (post-consolidation)
+
+The MCP tool layer was simplified: 42 tools → 21. References to old tool
+names in older runbook prose map to the current surface as follows. **When a
+runbook says an old name, call the new tool instead.**
+
+| Old name (deleted) | New tool to call instead |
+|---|---|
+| `create_draft_with_essentials`, `create_full_draft`, granular `create_draft` | `create_draft_full` — happy-path one-shot for new drafts (handles skeleton case too: just env + type + transactionOwnerId). For resume/update, use `update_draft_section` directly on an existing builderId. |
+| `finalize_draft` | `set_opcity` (always required) + `set_finalize_flags` ({ personalDeal, additionalFees, title, fmls? }) |
+| `add_partner_agent` | `add_participant` (role="co_agent"). For DUAL representation: call **twice** — once with side BUYERS_AGENT, once with SELLERS_AGENT. |
+| `verify_draft_splits` | `set_commission_splits({ verify: true })` — the verify pass folds into the write. The runbook always paired them; one tool removes drift risk. |
+| `auth_action` | `pre_flight` covers the verify case. To sign out, call `pre_flight({ forceFresh: true })` — invalidates the cached token before probing. |
+
+The discriminator-based tools (`update_draft_section`, `add_participant`,
+`remove_participant`, `add_referral`, `wire_commission_payer`,
+`set_finalize_flags`, `convert_listing`, `set_termination`) each take an
+explicit kind/role/section/state field — supply that field in every call.
+
+---
+
 ## Auth & environment
 
 - **Production is permanently blocked.** Any env resolving to `therealbrokerage.com` is rejected before the MCP makes any HTTP call. Supported: `team1`, `team2`, `team3`, `team4`, `team5`, `play`, `stage`.
@@ -30,7 +51,7 @@ else is hand-written and won't be overwritten.
 - **Year built is required in the USA.** Optional in Canada.
 - **Year built must NEVER be inferred or defaulted.** User rule (2026-04-21): when `yearBuilt` is missing from the prompt, ask via `AskUserQuestion` as a plain free-text input (no pre-populated options like 2020/2000/1970, no cached `typical_year_built` default). The user must actively type the year on every run. Strip any default options the validator returns for this field.
 - **Currency by state.** US → `USD`. Canadian provinces (`ALBERTA`, `BRITISH_COLUMBIA`, `MANITOBA`, `NEW_BRUNSWICK`, `NEWFOUNDLAND_AND_LABRADOR`, `NOVA_SCOTIA`, `NORTHWEST_TERRITORIES`, `NUNAVUT`, `ONTARIO`, `PRINCE_EDWARD_ISLAND`, `QUEBEC`, `SASKATCHEWAN`, `YUKON`) → `CAD`. Derived from `state`; only confirm if the prompt's dollar symbol contradicts.
-- **FMLS** is only offered/required when `state == GEORGIA` and deal is SALE/LEASE. Skip `update_fmls_info` elsewhere.
+- **FMLS** is only offered/required when `state == GEORGIA` and deal is SALE/LEASE. Skip `set_finalize_flags` (fmls field) elsewhere.
 
 ## Buyers & sellers
 
@@ -116,7 +137,7 @@ A successful return means both held. The agent gets `reconciled: true` determini
 
 Never compress these into a single line like `Sale · $20k · USD`. A user who doesn't already know the tool can't parse that.
 
-**G5. Post-write verification — dedicated tool.** Immediately after `set_commission_splits` succeeds, the agent **must** call `verify_draft_splits` (which fetches the draft and diffs committed vs. sent using `src/math/verifySplits.ts`). Any drift — missing participant, extra participant, or mismatched percent — returns `ok:false` with the specific diff. The agent stops the flow, translates the error, and does **not** return a "success" URL. The verification is code, not LLM judgment.
+**G5. Post-write verification — dedicated tool.** Immediately after `set_commission_splits` succeeds, the agent **must** call `set_commission_splits` (with `verify: true`) (which fetches the draft and diffs committed vs. sent using `src/math/verifySplits.ts`). Any drift — missing participant, extra participant, or mismatched percent — returns `ok:false` with the specific diff. The agent stops the flow, translates the error, and does **not** return a "success" URL. The verification is code, not LLM judgment.
 
 **G6. (RETIRED) Audit log.** Previously required appending each confirmed draft to `memory/active-drafts.md`. Retired: arrakis is the system of record; local mirroring added complexity without informational value. Use `list_my_builders` + `get_draft` when historical context is needed.
 
@@ -135,14 +156,14 @@ Never compress these into a single line like `Sale · $20k · USD`. A user who d
 
 - **Max one non-opcity referral** per draft. arrakis throws `ONE_REF_AGENT_ERROR` on a second.
 - **Internal referral**: `type=AGENT`, `role=REFERRING_AGENT`, needs `agentId` (resolved via `search_agent_by_name`). No EIN/W9.
-- **External referral**: `type=EXTERNAL_ENTITY`, `role=REFERRING_AGENT`, needs `companyName` (outside brokerage), `firstName/lastName`, `email`, `phoneNumber`, `address`, `ein`; optional `vendorDirectoryId`; W9 file via `upload_referral_w9` (separate multipart call).
+- **External referral**: `type=EXTERNAL_ENTITY`, `role=REFERRING_AGENT`, needs `companyName` (outside brokerage), `firstName/lastName`, `email`, `phoneNumber`, `address`, `ein`; optional `vendorDirectoryId`; W9 file via `add_referral` (with w9Path) (separate multipart call).
 - When `search_agent_by_name` returns zero candidates for a referral, ask "Is {name} at an outside brokerage?" before switching to the external flow.
 
 ## Co-agents & the "other-side" agent
 
-- **Single-rep, other side is represented**: create an `OTHER_AGENT` participant via `add_other_side_agent` — needs brokerage name (as `companyName`), first/last, email, phone, address, EIN (US), W9 file.
+- **Single-rep, other side is represented**: create an `OTHER_AGENT` participant via `add_participant` (role="other_side_agent") — needs brokerage name (as `companyName`), first/last, email, phone, address, EIN (US), W9 file.
 - **Single-rep, other side unrepresented**: skip entirely.
-- **Dual-rep**: every co-agent is registered **twice** via `add_co_agent` — once as `BUYERS_AGENT`, once as `SELLERS_AGENT`. This is what keeps `DualRepresentationAgentCommissionValidation` happy. The `add_partner_agent` convenience tool handles this automatically when `side=DUAL`.
+- **Dual-rep**: every co-agent is registered **twice** via `add_participant` (role="co_agent") — once as `BUYERS_AGENT`, once as `SELLERS_AGENT`. This is what keeps `DualRepresentationAgentCommissionValidation` happy. The `add_partner_agent` convenience tool handles this automatically when `side=DUAL`.
 
 ## Commission payer
 
@@ -154,7 +175,7 @@ Never compress these into a single line like `Sale · $20k · USD`. A user who d
 
 A partial payload (e.g. only `companyName`) fails bean validation with messages like "First name is required for commission payer info". So:
 
-- **Have all 6 fields** → create the payer via `add_commission_payer_participant`, point at it via `set_commission_payer{participantId, role}`.
+- **Have all 6 fields** → create the payer via `wire_commission_payer`, point at it via `set_commission_payer{participantId, role}`.
 - **Don't have all 6 fields** → omit both calls. `finalize_draft`'s payer args are optional; leave them unset.
 
 ### Typical default roles (when the user does provide full info)

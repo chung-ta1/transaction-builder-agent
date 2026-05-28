@@ -87,7 +87,7 @@ Call `finalize_draft` — the same no-op tools (set_opcity, personal_deal_info, 
 ### 5. Commission splits (if applicable)
 
 If the listing will be a dual-rep deal later OR the user partners with another agent:
-- Use `add_partner_agent` + `set_commission_splits` + `verify_draft_splits` as with transactions.
+- Use `add_partner_agent` + `set_commission_splits` + `set_commission_splits` (with `verify: true`) as with transactions.
 - Otherwise: single-agent listing, splits = 100% to the user.
 
 ### 6. Preview + fire (same turn) + audit log

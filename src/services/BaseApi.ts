@@ -51,31 +51,33 @@ export class BaseApi {
    * recover. This retry path fixes that.
    */
   protected async request<T>(env: Env, config: AxiosRequestConfig): Promise<T> {
-    const first = await this.attempt<T>(env, config, false);
-    if (!shouldReauth(first)) {
+    const first = await this.attempt<T>(env, config);
+    if (!needsReauth(first.status, first.data, await this.tokenAge(env))) {
       return this.unwrap<T>(first);
     }
     await this.auth.invalidate(env);
-    const retry = await this.attempt<T>(env, config, true);
+    const retry = await this.attempt<T>(env, config);
     return this.unwrap<T>(retry);
+  }
+
+  private async tokenAge(env: Env): Promise<number> {
+    const cached = await this.auth.peek(env);
+    return cached?.obtainedAt ? Date.now() - cached.obtainedAt : Infinity;
   }
 
   private async attempt<T>(
     env: Env,
     config: AxiosRequestConfig,
-    isRetry: boolean,
   ): Promise<AxiosResponse<T>> {
     const bearer = await this.auth.getBearer(env);
     const headers = {
       ...(config.headers ?? {}),
       Authorization: `Bearer ${bearer}`,
     };
-    try {
-      return await this.client(env).request<T>({ ...config, headers });
-    } catch (err) {
-      if (isRetry) throw err;
-      throw err;
-    }
+    // axios is configured with validateStatus: () => true, so it does not throw
+    // on HTTP status — status branching happens in `unwrap`. A throw here is a
+    // genuine network/transport error; let it propagate unchanged.
+    return this.client(env).request<T>({ ...config, headers });
   }
 
   private unwrap<T>(res: AxiosResponse<T>): T {
@@ -86,20 +88,53 @@ export class BaseApi {
   }
 }
 
-function shouldReauth(res: AxiosResponse): boolean {
-  if (res.status === 401) return true;
-  if (res.status !== 403) return false;
-  // 403 with an empty body is the signature of a revoked/stale token at
-  // Real's auth layer. 403 with a real authorization message (arrakis's
-  // own authz rules) has a body — leave those alone.
-  const body = res.data;
+/** ms after which an empty-body 403 might plausibly be a revoked/stale session. */
+const STALE_TOKEN_MS = 120_000;
+
+/**
+ * 401 = unauthenticated → always re-auth.
+ * 403 = forbidden. An empty body is ambiguous: a revoked/stale token at Real's
+ *   auth layer (re-auth recovers it) vs an authorization denial on a VALID token
+ *   (re-auth can't fix it — and reopening the browser pops a confusing SECOND
+ *   login + discards a good token; verified 2026-05-23 with an agent lacking
+ *   transaction-create permission, which 403s with an empty body). A token
+ *   minted moments ago is NOT stale, so a 403 on it is authorization → do NOT
+ *   re-auth. Only re-auth an empty-body 403 when the token is old enough to
+ *   plausibly be a revoked session.
+ * 403 with a real authorization message → never re-auth; surface it.
+ */
+export function needsReauth(status: number, body: unknown, tokenAgeMs: number): boolean {
+  if (status === 401) return true;
+  if (status !== 403 || !isEmptyBody(body)) return false;
+  return tokenAgeMs > STALE_TOKEN_MS;
+}
+
+export function isEmptyBody(body: unknown): boolean {
   if (body == null) return true;
   if (typeof body === "string") return body.trim().length === 0;
   if (typeof body === "object") {
-    const obj = body as Record<string, unknown>;
+    const obj = unwrapArrakisError(body as Record<string, unknown>);
     return !(obj.message ?? obj.error ?? obj.detail);
   }
   return false;
+}
+
+/**
+ * arrakis (real-commons) wraps errors in a single-key envelope keyed by the
+ * Java class name: `{ "com.real.commons.apierror.ApiError": { message, ... } }`.
+ * The real message lives one level down, so a check for a top-level `message`
+ * sees nothing and would misread an authorization 403 as an empty-body (stale
+ * session) one — discarding a valid token and reopening the browser. Peel the
+ * envelope before inspecting. Verified 2026-05-27: a nested-message 403 on
+ * /listings/search popped a spurious second sign-in.
+ */
+function unwrapArrakisError(obj: Record<string, unknown>): Record<string, unknown> {
+  const keys = Object.keys(obj);
+  if (keys.length === 1 && keys[0].startsWith("com.real.commons.apierror")) {
+    const inner = obj[keys[0]];
+    if (inner && typeof inner === "object") return inner as Record<string, unknown>;
+  }
+  return obj;
 }
 
 function messageOf(res: AxiosResponse): string {

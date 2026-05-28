@@ -51,6 +51,26 @@ learned_agents: []
 # `typical_team_id` for silent defaulting; `last_used_team_id` only surfaces
 # as an "or try again" option when the user says "same team as last time".
 last_used_team_id: null
+
+# Per-address cache. The same property always has the same year built; this
+# kills the most common soft gap on repeat addresses. The validator's
+# `addressHistory` input reads from here.
+#
+# Lookup key: `${zip}|${lowercased trimmed street}` (e.g. "10025|123 main st").
+# Both readers and writers must build the key the same way — see
+# `addressHistoryKey()` in src/util/draftRequirements.ts.
+#
+# Fields per entry:
+#   key             — composite zip + street key (canonical, lowercased)
+#   yearBuilt       — silently defaulted on cache hit (surfaced in defaults[])
+#   lastMlsNumber   — silently defaulted on cache hit
+#   teamId          — last team used at this address (informational)
+#   lastUsed        — ISO date of the last successful draft at this address
+#   useCount        — number of successful drafts; tie-break / staleness signal
+#
+# Only write here from the runbook's "learn from the run" step on a
+# successful draft. Never store financial values (sale price, commission).
+address_history: []
 ```
 
 **What the agent does NOT store here:**
