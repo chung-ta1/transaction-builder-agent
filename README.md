@@ -43,13 +43,13 @@ Claude emits a `✓`/`~` parse summary (✓ = read from your message, ~ = defaul
 
 A submitted transaction goes live but may land in **`NEW`** until a **commission payer** (the title company / disbursing party) is set — give Claude the payer details up front and it wires them, or add it in Bolt afterward. Same for naming the actual buyer/seller (defaulted to placeholders).
 
-### Batch — multiple ops in one prompt
+### From a PDF or image
 
-You type:
+Attach a listing agreement, sale contract, or buyer-rep agreement — as a PDF, screenshot, or photo — and say:
 
-> *"Create a transaction where I sold 789 Oak NYC 10024 for $500k at 3% commission AND create a referral payment to Jane Smith at Keller Williams for $200."*
+> *"Create a transaction from this."* (attach `Listing_Agreement.pdf`)
 
-Claude asks for any missing info in one round of questions, then creates each item at the same time. Transactions come back as **drafts for you to review in Bolt** and submit when ready. Referral payments submit immediately (Real has no draft stage for them) — Claude shows the full preview right before firing; hit Esc if anything looks wrong. You get one review link per item. Up to 5 items per prompt — any mix of transactions, listings, or referral payments.
+Claude reads the document itself (no OCR setup needed), extracts **only the filled-in terms** — never inventing values for blank fields — and shows an extraction summary tagged ✓ (from the doc) / ⚠ (blank, will ask). It confirms the representation side and any missing required fields (e.g. a blank list price or commission), then runs the normal create flow. The agent named on the document is informational only — **you** (the signed-in user) own what's created.
 
 ## Safety
 
