@@ -8,8 +8,8 @@
  *   - real-commons: com.real.commons.domain.transaction.{TransactionType, PropertyType}
  *   - real-commons: com.real.commons.geo.StateOrProvince
  *
- * When arrakis changes these, update this file by hand (the `/sync-rules`
- * skill flags drift; there is no automated codegen).
+ * When arrakis changes these, update this file by hand — there is no
+ * automated codegen.
  */
 
 export type RepresentationType = "SELLER" | "BUYER" | "DUAL" | "LANDLORD" | "TENANT";

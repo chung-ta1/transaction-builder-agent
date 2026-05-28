@@ -14,7 +14,6 @@
 | `/update-draft` | Edit a field on an existing draft (price, commission, team, participants, dates) or resume the most-recent unfinished draft and fill gaps. | Editing inside the draft |
 | `/submit-draft` | Promote a draft to a live Transaction / `LISTING_ACTIVE`. | "Create Transaction" button |
 | `/delete-draft` | Permanently delete an unsubmitted draft. | Delete from drafts list |
-| `/sync-rules` | Force-rebuild the arrakis rulebook from source (rarely needed). | — |
 
 No slash required — Claude recognizes natural phrasing ("create a transaction for…", "resume the last draft", "record a $500 termination fee…") and routes to the right skill.
 

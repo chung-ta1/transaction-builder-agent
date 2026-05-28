@@ -1,7 +1,6 @@
 import type { Tool } from "./Tool.js";
 import {
   startListingFlow,
-  startSyncRules,
   startTransactionFlow,
 } from "./entry.js";
 import { granularTools } from "./granular/index.js";
@@ -21,7 +20,6 @@ import { convenienceTools } from "./convenience/index.js";
 export const allTools: Tool[] = [
   startTransactionFlow,
   startListingFlow,
-  startSyncRules,
   ...convenienceTools,
   ...granularTools,
 ];

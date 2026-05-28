@@ -13,8 +13,7 @@ transaction-builder-agent/
 │   │       ├── create-listing/SKILL.md
 │   │       ├── create-from-document/SKILL.md   # PDF or image → transaction/listing
 │   │       ├── create-referral-payment/SKILL.md
-│   │       ├── list-drafts/  update-draft/  submit-draft/  delete-draft/
-│   │       └── sync-rules/SKILL.md        # force-rebuild the arrakis rulebook
+│   │       └── list-drafts/  update-draft/  submit-draft/  delete-draft/
 ├── memory/                               # read + written by the agent
 │   ├── transaction-rules.md              # arrakis rulebook + accuracy stack
 │   ├── arrakis-pin.md                    # drift-check pin

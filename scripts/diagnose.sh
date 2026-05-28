@@ -140,7 +140,7 @@ echo ""
 
 # ---- 5. Skill symlinks ----
 echo "── 5. Skill symlinks ────────────────────────────────────────"
-for skill in create-transaction sync-rules; do
+for skill in create-transaction create-from-document; do
   LINK="$HOME/.claude/skills/$skill"
   TARGET="$PROJECT_ROOT/.claude/skills/$skill"
   if [[ -L "$LINK" ]]; then

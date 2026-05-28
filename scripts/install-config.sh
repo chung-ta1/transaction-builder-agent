@@ -170,8 +170,11 @@ link() {
 }
 
 echo "✓ Claude CLI skill symlinks:"
-link "$PROJECT_ROOT/.claude/skills/create-transaction" "$CLI_SKILLS/create-transaction"
-link "$PROJECT_ROOT/.claude/skills/sync-rules"         "$CLI_SKILLS/sync-rules"
+# Link every generated skill so all are available as CLI slash-commands.
+for skilldir in "$PROJECT_ROOT"/.claude/skills/*/; do
+  skillname="$(basename "$skilldir")"
+  link "${skilldir%/}" "$CLI_SKILLS/$skillname"
+done
 
 # Remove any legacy agent symlink from a previous install.
 if [[ -L "$CLI_AGENTS/transaction-creator.md" ]]; then

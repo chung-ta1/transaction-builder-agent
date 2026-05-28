@@ -25,12 +25,6 @@ export const prompts: PromptDef[] = [
     file: join(__dirname, "create_transaction.md"),
   },
   {
-    name: "sync_rules",
-    description:
-      "Force a full rebuild of the transaction-builder-agent rulebook from Real's source code, ignoring the usual drift-check throttle.",
-    file: join(__dirname, "sync_rules.md"),
-  },
-  {
     name: "create_listing",
     description:
       "Create a Real Brokerage listing (type=LISTING transaction-builder). 5-step flow: Property → Price/Commission/Dates → Seller → Transaction Owner → Finalize. Same smart-parse + validator pattern as transactions.",

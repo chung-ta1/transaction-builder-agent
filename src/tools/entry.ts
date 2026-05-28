@@ -39,26 +39,6 @@ export const startTransactionFlow = defineTool({
   },
 });
 
-export const startSyncRules = defineTool({
-  name: "start_sync_rules",
-  description:
-    "Call when the user asks to 'sync the rules', 'update the rules', 'refresh the logic', 'check for updates', or suspects this tool is behind a recent change to Real's source. Returns the rules-refresh runbook you should follow to rebuild memory/transaction-rules.md from Real's live source. Call this before offering the user a fresh draft if they flagged the tool felt stale.",
-  input: z.object({}),
-  async handler(): Promise<ToolResult<{ runbook: string; next: string }>> {
-    try {
-      const runbook = await readPromptContent("sync_rules");
-      return ok({
-        runbook,
-        next: "Follow the rules-refresh runbook. After it completes, summarize what changed for the user in one or two sentences.",
-      });
-    } catch (err) {
-      return fail(
-        `Failed to load sync-rules runbook: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  },
-});
-
 export const startListingFlow = defineTool({
   name: "start_listing_flow",
   description:
