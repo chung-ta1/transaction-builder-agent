@@ -51,6 +51,7 @@ export class AuthService {
         const token: CachedToken = {
           accessToken: result.accessToken,
           email: result.email,
+          obtainedAt: Date.now(),
         };
         await this.cache.set(env, token, { persist: result.remember !== false });
         return token;
@@ -69,10 +70,13 @@ export class AuthService {
   }
 
   /**
-   * Called by API clients on a 401. Drops the cached token; the next
-   * `getBearer` call will trigger a fresh browser login.
+   * Called by API clients on a 401, and by pre_flight(forceFresh) on an
+   * identity switch. Drops the cached token AND any in-flight login for the env,
+   * so the next login starts genuinely fresh instead of deduping onto a stale /
+   * previous-identity browser login (which would leave a second tab open).
    */
   async invalidate(env: Env): Promise<void> {
+    this.inFlight.delete(env);
     await this.cache.clear(env);
   }
 

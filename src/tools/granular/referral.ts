@@ -3,78 +3,49 @@ import { defineTool, ok, type ToolResult } from "../Tool.js";
 import { envSchema } from "../../types/schemas.js";
 import { fromError } from "./init.js";
 
-export const addInternalReferral = defineTool({
-  name: "add_internal_referral",
+/**
+ * Add a referral to a draft. `kind: "internal"` wires another Real agent by
+ * yentaId; `kind: "external"` registers an outside-brokerage agent and
+ * (optionally) uploads their W9 in the same call.
+ *
+ * arrakis cap: max one non-opcity referral per draft.
+ */
+export const addReferral = defineTool({
+  name: "add_referral",
   description:
-    "Add an internal referral (another Real agent). Requires yentaId. Max one non-opcity referral per draft — a second will be rejected by arrakis.",
-  input: z.object({
-    env: envSchema,
-    builderId: z.string(),
-    agentId: z.string().uuid(),
-    receivesInvoice: z.boolean().default(false),
-  }),
-  async handler({ env, builderId, agentId, receivesInvoice }, { arrakis }): Promise<ToolResult<unknown>> {
-    try {
-      return ok(
-        await arrakis.addReferralInfo(env, builderId, {
-          role: "REFERRING_AGENT",
-          type: "AGENT",
-          agentId,
-          receivesInvoice,
-        }),
-      );
-    } catch (err) {
-      return fromError(err);
-    }
-  },
-});
-
-export const addExternalReferral = defineTool({
-  name: "add_external_referral",
-  description:
-    "Add an external referral (agent at an outside brokerage). Requires companyName (their brokerage), first/last name, address, and EIN. Call upload_referral_w9 afterward to attach a W9 PDF.",
-  input: z.object({
-    env: envSchema,
-    builderId: z.string(),
-    firstName: z.string().min(1),
-    lastName: z.string().min(1),
-    companyName: z.string().min(1),
-    address: z.string().min(1),
-    ein: z.string().min(1),
-    email: z.string().email().optional(),
-    phoneNumber: z.string().optional(),
-    receivesInvoice: z.boolean().default(true),
-    vendorDirectoryId: z.string().uuid().optional(),
-  }),
+    "Add a referral to a draft. kind='internal' takes a yentaId for another Real agent. kind='external' takes name + brokerage + EIN + address (+ optional w9Path to upload the W9 PDF in the same call). Max one non-opcity referral per draft — arrakis rejects a second.",
+  input: z.discriminatedUnion("kind", [
+    z.object({
+      env: envSchema, builderId: z.string(), kind: z.literal("internal"),
+      agentId: z.string().uuid(), receivesInvoice: z.boolean().default(false),
+    }),
+    z.object({
+      env: envSchema, builderId: z.string(), kind: z.literal("external"),
+      firstName: z.string().min(1), lastName: z.string().min(1), companyName: z.string().min(1),
+      address: z.string().min(1), ein: z.string().min(1),
+      email: z.string().email().optional(), phoneNumber: z.string().optional(),
+      receivesInvoice: z.boolean().default(true),
+      vendorDirectoryId: z.string().uuid().optional(),
+      w9Path: z.string().optional().describe("Path to a W9 PDF; uploaded in the same call when supplied."),
+    }),
+  ]),
   async handler(args, { arrakis }): Promise<ToolResult<unknown>> {
-    const { env, builderId, ...rest } = args;
+    const { env, builderId } = args;
     try {
-      return ok(
-        await arrakis.addReferralInfo(env, builderId, {
-          role: "REFERRING_AGENT",
-          type: "EXTERNAL_ENTITY",
-          ...rest,
-        }),
-      );
-    } catch (err) {
-      return fromError(err);
-    }
-  },
-});
-
-export const uploadReferralW9 = defineTool({
-  name: "upload_referral_w9",
-  description:
-    "Attach a W9 PDF to an external referral participant. Only used after add_external_referral returns its participantId.",
-  input: z.object({
-    env: envSchema,
-    builderId: z.string(),
-    participantId: z.string(),
-    filePath: z.string().min(1),
-  }),
-  async handler({ env, builderId, participantId, filePath }, { arrakis }): Promise<ToolResult<unknown>> {
-    try {
-      return ok(await arrakis.uploadReferralW9(env, builderId, participantId, filePath));
+      if (args.kind === "internal") {
+        return ok(await arrakis.addReferralInfo(env, builderId, {
+          role: "REFERRING_AGENT", type: "AGENT",
+          agentId: args.agentId, receivesInvoice: args.receivesInvoice,
+        }));
+      }
+      const { kind: _k, w9Path, ...rest } = args;
+      const result = await arrakis.addReferralInfo(env, builderId, {
+        role: "REFERRING_AGENT", type: "EXTERNAL_ENTITY", ...rest,
+      });
+      if (w9Path && result && typeof result === "object" && "id" in result && typeof (result as { id: unknown }).id === "string") {
+        await arrakis.uploadReferralW9(env, builderId, (result as { id: string }).id, w9Path);
+      }
+      return ok(result);
     } catch (err) {
       return fromError(err);
     }

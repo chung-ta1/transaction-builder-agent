@@ -1,99 +1,64 @@
 import { z } from "zod";
 import { defineTool, ok, type ToolResult } from "../Tool.js";
-import {
-  addParticipantRequestSchema,
-  agentParticipantInfoSchema,
-  buyerSellerSchema,
-  envSchema,
-  ownerAgentInfoSchema,
-} from "../../types/schemas.js";
+import { addParticipantRequestSchema, agentParticipantInfoSchema, envSchema } from "../../types/schemas.js";
 import { fromError } from "./init.js";
 
-export const updateBuyerSeller = defineTool({
-  name: "update_buyer_seller",
+/**
+ * Add one participant to a draft. The `role` discriminator selects which
+ * arrakis endpoint receives the call:
+ *
+ *   co_agent              → PUT /co-agent           (data: agentParticipantInfo)
+ *   other_side_agent      → PUT /other-participants (role=OTHER_AGENT)
+ *   transaction_coordinator → POST /transaction-coordinator/{yentaId}
+ */
+export const addParticipant = defineTool({
+  name: "add_participant",
   description:
-    "Set buyer(s) and seller(s) on the draft. Sellers list must not be empty. Each person needs company OR (first + last).",
-  input: z.object({
-    env: envSchema,
-    builderId: z.string(),
-    buyerSeller: buyerSellerSchema,
-  }),
-  async handler({ env, builderId, buyerSeller }, { arrakis }): Promise<ToolResult<unknown>> {
+    "Add a participant to a draft. role='co_agent' wires another Real agent on the owner's side (DUAL: call twice with side BUYERS_AGENT then SELLERS_AGENT). role='other_side_agent' wires the OTHER_AGENT on a single-rep deal where the other side is represented. role='transaction_coordinator' attaches a TC by yentaId.",
+  input: z.discriminatedUnion("role", [
+    z.object({ env: envSchema, builderId: z.string(), role: z.literal("co_agent"), data: agentParticipantInfoSchema }),
+    z.object({ env: envSchema, builderId: z.string(), role: z.literal("other_side_agent"), data: addParticipantRequestSchema.extend({ role: z.literal("OTHER_AGENT").default("OTHER_AGENT") }) }),
+    z.object({ env: envSchema, builderId: z.string(), role: z.literal("transaction_coordinator"), yentaId: z.string().uuid() }),
+  ]),
+  async handler(args, { arrakis }): Promise<ToolResult<unknown>> {
+    const { env, builderId } = args;
     try {
-      return ok(await arrakis.updateBuyerAndSellerInfo(env, builderId, buyerSeller));
+      switch (args.role) {
+        case "co_agent":
+          return ok(await arrakis.addCoAgent(env, builderId, args.data));
+        case "other_side_agent":
+          return ok(await arrakis.addOtherParticipant(env, builderId, args.data));
+        case "transaction_coordinator":
+          return ok(await arrakis.addTransactionCoordinator(env, builderId, args.yentaId));
+      }
     } catch (err) {
       return fromError(err);
     }
   },
 });
 
-export const setOwnerAgentInfo = defineTool({
-  name: "set_owner_agent_info",
+/**
+ * Remove a buyer / seller / co-agent by participant id (from get_draft).
+ * arrakis requires ≥1 buyer (TRANSACTION) and ≥1 seller — caller must
+ * warn the user if the deletion leaves either array empty.
+ */
+export const removeParticipant = defineTool({
+  name: "remove_participant",
   description:
-    "For single-rep deals: set the owner agent (agentId + role) + officeId + optional team/lead-source. Address must be set before calling. officeId becomes mandatory at submit.",
+    "Remove a participant from a draft by participantId (fetch from get_draft). role='buyer' deletes a buyer, 'seller' a seller, 'co_agent' a co-agent. arrakis requires ≥1 buyer (TRANSACTION) and ≥1 seller — warn if the deletion leaves either empty. After removing a co_agent, recompute commission splits.",
   input: z.object({
     env: envSchema,
     builderId: z.string(),
-    ownerInfo: ownerAgentInfoSchema,
+    role: z.enum(["buyer", "seller", "co_agent"]),
+    participantId: z.string(),
   }),
-  async handler({ env, builderId, ownerInfo }, { arrakis }): Promise<ToolResult<unknown>> {
+  async handler({ env, builderId, role, participantId }, { arrakis }): Promise<ToolResult<unknown>> {
     try {
-      return ok(await arrakis.updateOwnerAgentInfo(env, builderId, ownerInfo));
-    } catch (err) {
-      return fromError(err);
-    }
-  },
-});
-
-export const addCoAgent = defineTool({
-  name: "add_co_agent",
-  description:
-    "Add one co-agent on the owner's side. For DUAL rep, call twice per agent (once with BUYERS_AGENT, once with SELLERS_AGENT).",
-  input: z.object({
-    env: envSchema,
-    builderId: z.string(),
-    agent: agentParticipantInfoSchema,
-  }),
-  async handler({ env, builderId, agent }, { arrakis }): Promise<ToolResult<unknown>> {
-    try {
-      return ok(await arrakis.addCoAgent(env, builderId, agent));
-    } catch (err) {
-      return fromError(err);
-    }
-  },
-});
-
-export const addOtherSideAgent = defineTool({
-  name: "add_other_side_agent",
-  description:
-    "Single-rep, other side represented: add the OTHER_AGENT participant (brokerage name, first/last, email, phone, address, EIN for US, optional W9 file). Skip if the other side is unrepresented.",
-  input: z.object({
-    env: envSchema,
-    builderId: z.string(),
-    participant: addParticipantRequestSchema.extend({
-      role: z.literal("OTHER_AGENT").default("OTHER_AGENT"),
-    }),
-  }),
-  async handler({ env, builderId, participant }, { arrakis }): Promise<ToolResult<unknown>> {
-    try {
-      return ok(await arrakis.addOtherParticipant(env, builderId, participant));
-    } catch (err) {
-      return fromError(err);
-    }
-  },
-});
-
-export const addTransactionCoordinator = defineTool({
-  name: "add_transaction_coordinator",
-  description: "Attach a Transaction Coordinator (by yentaId) to the draft. Optional, zero or more.",
-  input: z.object({
-    env: envSchema,
-    builderId: z.string(),
-    yentaId: z.string().uuid(),
-  }),
-  async handler({ env, builderId, yentaId }, { arrakis }): Promise<ToolResult<unknown>> {
-    try {
-      return ok(await arrakis.addTransactionCoordinator(env, builderId, yentaId));
+      switch (role) {
+        case "buyer": return ok(await arrakis.deleteBuyer(env, builderId, participantId));
+        case "seller": return ok(await arrakis.deleteSeller(env, builderId, participantId));
+        case "co_agent": return ok(await arrakis.deleteCoAgent(env, builderId, participantId));
+      }
     } catch (err) {
       return fromError(err);
     }

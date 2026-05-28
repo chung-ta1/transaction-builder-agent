@@ -1,121 +1,189 @@
-You are helping the user **modify an existing draft** (transaction-builder). The user names a builderId (or says "the current draft", "the last one", etc.) and describes one or more fields they want to change. Your job is to route each change to the right granular MCP tool and fire them in one turn.
+You are modifying an existing draft (transaction-builder). Two intents share this skill:
 
-## Principle zero: context routing (load `memory/context-routing.md`)
+- **Mutation mode** — user explicitly names fields to change ("change price to 250k", "flip to multiple payments", "add partner Tamir").
+- **Resume mode** — user wants to finish a draft toward submittable ("resume the draft", "pick up where I left off", "finish that draft from earlier"). Auto-detect the target, fill missing fields via the validator, suggest `/submit-draft` when done.
 
-The draft you're editing is chosen by **context, not just the prompt**:
-1. Active draft in last 1–3 turns (in-conversation context) → that's the target.
-2. Explicit UUID / short-hash → that's the target.
-3. "the last one" / "this draft" → call `list_my_builders`, take the most-recent in-progress entry.
-4. Nothing matches → ASK which draft.
+Both modes share the same mechanics (fetch state, write subsections, run G5 if commission touched). The intent flips two things: which draft is the target (explicit vs most-recent-in-flight) and the default ending (return URL vs suggest submit).
 
-Surface the resolved target in the parse summary (`Routing: update draft 64b1deb3 (active from this session)`) so the user can catch a misread.
+## Routing
 
-**When to trigger:** user says "update draft X", "modify the draft", "change {field} on the draft", "set {field} to {value}", "add {participant} to the draft", "remove {participant}", "flip the draft to {something}", or references a specific builderId with a mutation intent.
+Read `memory/context-routing.md` first.
 
-**When NOT to trigger:**
-- The user wants to CREATE a new draft → `/create-transaction` / `/create-listing` / `/create-referral` / `/create-referral-payment`.
-- The user wants to SUBMIT a draft → `/submit-draft`.
-- The user wants to DELETE a draft → `/delete-draft`.
-- The user wants to RESUME a stalled flow (fill missing fields to reach submittable) → `/resume-draft`.
+| User says | Intent | Target draft |
+|---|---|---|
+| "update draft X", "change {field}", "set {flag}", "add/remove {participant}" | **Mutation** | Explicit builderId, in-conversation focus, or `list_my_builders` filter (e.g. "the $200k one") |
+| "resume the draft", "pick up where I left off", "finish that draft", "continue where we were" | **Resume** | Most-recent in-flight from `list_my_builders` (no ask) OR explicit builderId / disambiguator if the user gave one |
+| "submit the draft" (no changes) | NOT this skill | → `/submit-draft` |
+| "delete the draft" / "cancel" | NOT this skill | → `/delete-draft` |
+| "create a new draft" | NOT this skill | → `/create-transaction` / `/create-listing` |
 
-## Core principles
+Surface the resolved intent + target in the parse summary so the user can catch a misread (`Routing: update draft 64b1deb3 (mutation mode, active in this session)` or `Routing: resume draft 64b1deb3 (most-recent in-flight)`).
 
-Same as `/create-transaction`:
-1. **Parse > fire in one turn.** No confirmation gate. Preview shows the before/after, then the tool call fires.
-2. **Ask only at money/classification/identity boundaries.** "Change commission to 5" is ambiguous ($5 flat vs 5%?) → ask. "Change commission to 5%" → fire.
-3. **Use memory + live state.** `get_draft` is the source of truth for current values; `memory/user-patterns.md` has team/partner caches.
+## Pre-flight
 
-## Runbook
+In one assistant turn, batch:
+- `pre_flight(env, userPrompt)` — non-blocking auth probe + ZIP→state.
+- `list_my_builders(env, yentaId, limit=10)` — needed for resume target resolution AND for any "the last one" / address-disambiguator phrase.
+- Read `memory/user-preferences.md`, `memory/user-patterns.md`, `memory/transaction-rules.md`, `memory/error-messages.md`.
 
-### 0. Resolve target draft
+## 0. Resolve target
 
-Input → builderId:
-- Explicit UUID in prompt → use it.
-- "the last draft" / "the current draft" → call `list_my_builders(env, yentaId)`, take the most-recent in-progress entry.
-- "draft at 120 Main St" / "draft for the $200k sale" → call `list_my_builders`, filter by property.address; if multiple match, ask.
-- No match → ask for the builderId (one `AskUserQuestion`, free-text).
+**Mutation mode:**
+1. Explicit UUID / short-hash in prompt → use it.
+2. "the last draft" / "the current draft" → most-recent in-progress from `list_my_builders`.
+3. Address / price disambiguator → filter `list_my_builders` results; if exactly one match, use it; if multiple, ASK once.
+4. None of the above → ASK for the builderId (one `AskUserQuestion`, free-text).
 
-### 1. Fetch current state
+**Resume mode:**
+1. Explicit builderId → use it.
+2. Disambiguator ("resume the 123 Main St one", "the $500k one") → filter `list_my_builders`; if exactly one match, use it; if multiple, ASK.
+3. **Default — no disambiguator → use the most recent (row 0). Do NOT ask.** The slash-command description promises "most recent unfinished" — asking adds a round-trip the user doesn't want. Confirm in the status summary.
+4. No in-flight drafts and no builderId → STOP and ask the user to paste the builderId from Bolt.
 
-Call `get_draft(env, builderId)`. This is mandatory — you need the current values for:
-- Replaying PUT endpoints that overwrite whole sections (`update_price_and_dates`, `update_location`, `update_buyer_seller`, `set_owner_agent_info`) — arrakis replaces the full section, so you have to send existing values alongside the change.
-- Surfacing the before/after in the preview.
-- Getting participant ids for delete operations (buyer/seller/co-agent).
+## 1. Fetch current state — mandatory
 
-If the draft is already submitted (not a builder — `get_draft` 404s or returns a `Transaction`), STOP and route to `/submit-draft`'s post-submit edit path or tell the user that most fields are locked after submit.
+`get_draft(env, builderId)`. You need:
+- Current values for any subsection PUT (arrakis replaces whole sections; you must replay existing values alongside the change).
+- Participant ids for any `remove_participant` operation.
+- For resume mode: the gap list.
 
-### 2. Classify the change
+If `get_draft` 404s or returns a `Transaction` (already submitted), STOP. Most fields lock at submit. Route to `/submit-draft`'s post-submit edit path or tell the user.
 
-Map the user's words to a granular tool call. The table below is exhaustive across current MCP tools:
+## 2. Determine what to change
+
+**Mutation mode:** parse the user's stated changes against the table below. When the user bundles ("change price to 250k AND flip to installments"), fire them in order; prefer one PUT per section.
+
+**Resume mode:** call `validate_draft_completeness({ env, userPrompt, answers: currentAnswersFromDraft, addressHistory, agentProfile })` (pass `addressHistory` from `user-patterns.md`, `agentProfile` from `pre_flight.auth.user`) and use:
+- `gaps[]` → hard fields to fill (these block submit). Batch into `AskUserQuestion` (≤4 per call).
+- `softGaps[]` → optional fields. Surface in the status summary; only fill if the user supplied values in the prompt.
+- `blockers[]` → STOP. Show resolution.
+- `ready: true` (no gaps, no blockers) → the draft is already submittable. Tell the user and route to `/submit-draft`. Don't run the fill flow on an empty list.
+
+After user answers, rebuild answers from current draft + new values, re-validate, cycle until ready.
+
+## 3. Field → tool mapping (mutation mode)
 
 | User says | Tool | Notes |
 |---|---|---|
-| "change the sale price to X" / "price is Y now" | `update_price_and_dates` | Replay all price+date fields, change `salePrice.amount`. |
-| "change the commission to N% / $N" | `update_price_and_dates` | Replay; set `saleCommission` or `listingCommission` based on representation. Ambiguity on flat vs percent → ask. |
-| "flip to multiple payments" / "this is installments" / "sub-transactions" | `update_price_and_dates` | Replay; set `requiresInstallments: true`. Mirror: "single payment" / "one payment at closing" → `requiresInstallments: false`. |
-| "add installments: 50% June 1, 50% July 1" / "split into 3 parts" | `upsert_installments` | POST-SUBMIT ONLY — the draft must already be a submitted Transaction. Call with `newInstallments: [{amount: "50.00", estimatedClosingDate: "2026-06-01"}, ...]`. Percents must sum to 100.00. If the user is still on a builder, fail-fast: tell them to submit first via `/submit-draft`, then come back. Feature-flagged server-side (`app.flags.installments.enabled`) — 404 if off. |
-| "change closing date to X" / "move closing to Y" | `update_price_and_dates` | Replay; set `closingDate` (ISO yyyy-MM-dd). |
-| "change acceptance date to X" | `update_price_and_dates` | Replay; set `acceptanceDate`. |
-| "change listing expires to X" | `update_price_and_dates` | LISTING-type draft only; set `listingExpirationDate`. |
-| "change address to X" / "move draft to {address}" | `update_location` | Replay with new street/city/state/zip; also update `yearBuilt`, `mlsNumber` if user mentions them (same call). |
-| "change year built to X" | `update_location` | Replay location with new `yearBuilt`. |
-| "change MLS to X" / "MLS is N/A" | `update_location` | Replay with new `mlsNumber`. |
-| "change the representation to BUYER / SELLER / DUAL / LANDLORD / TENANT" | `update_price_and_dates` AND `set_owner_agent_info` | Replay both; owner agent role must match new representation (BUYERS_AGENT / SELLERS_AGENT). |
-| "add a partner {name}" / "add co-agent {name}" | `search_agent_by_name` then `add_co_agent` | Resolve yentaId via `user-patterns.md:learned_agents` first, then search. |
-| "remove partner {name}" / "remove co-agent" | `delete_co_agent` | Needs the coAgent's `participantId` from `get_draft.agentsInfo.coAgents[].id`. After delete, recompute commission splits (redistribute the removed co-agent's percent) via `compute_commission_splits` + `set_commission_splits` + `verify_draft_splits`. |
-| "add a referral to {name}" | `add_internal_referral` or `add_external_referral` (classify via the referral rules in `/create-transaction` step 2). |
-| "add transaction coordinator {name}" | `add_transaction_coordinator` |
-| "remove transaction coordinator {yentaId}" | DELETE `/transaction-coordinator/{yentaId}` — not yet exposed as a granular tool. Say so. |
-| "change buyer name" / "add a buyer" | `update_buyer_seller` | Replay full arrays with the mutation. |
-| "remove buyer {name}" (one of several) | `delete_buyer` | Needs `buyerId` from `get_draft.buyers[].id`. If this is the last buyer on a TRANSACTION, warn: arrakis requires ≥1 buyer at submit. |
-| "change seller name" / "add a seller" | `update_buyer_seller` | Same pattern. |
-| "remove seller {name}" | `delete_seller` | Needs `sellerId` from `get_draft.sellers[].id`. Arrakis requires ≥1 seller on every draft — warn if last. |
-| "change team to {name}" / "put this on {team}" | `set_owner_agent_info` | Replay with new `teamId` (resolve from `user-patterns.md:teams[]`). Ambiguity with env name → ask per `/create-transaction` team rules. |
-| "change commission splits" / "re-split 70/30" | `compute_commission_splits` → `set_commission_splits` → `verify_draft_splits` | Full accuracy-stack: never hand-compute. |
-| "change office to X" | `set_owner_agent_info` | Replay with new `officeId`. |
-| "add/change commission payer" | `add_commission_payer_participant` + `set_commission_payer` | Requires 6 fields: role + first + last + company + email + phone. If user only has partial info, DO NOT call — tell them to finish in Bolt. |
-| "turn on opcity" / "off opcity" | `set_opcity` |
-| "mark as personal deal" | `update_personal_deal_info` |
-| "add fee X" / "additional fees" | `update_additional_fees_info` |
-| "set title info" / "use real title" | `update_title_info` |
-| "(Georgia only) FMLS flag" | `update_fmls_info` |
+| "change sale price to X", "price is Y now" | `update_draft_section` (section="price-date") | Replay all price+date fields, change `salePrice.amount`. |
+| "change commission to N% / $N" | `update_draft_section` (section="price-date") | Set `saleCommission` or `listingCommission` based on rep. Ambiguity flat-vs-percent → ask. |
+| "flip to multiple payments" / "installments" | `update_draft_section` (section="price-date") | Set `requiresInstallments: true`. Mirror: "single payment" → `false`. |
+| "add installments: 50% June 1, 50% July 1" | `upsert_installments` | **POST-SUBMIT ONLY** — fail-fast if still a builder; tell them to submit first. Feature-flagged (404 if off). Sum to 100.00. |
+| "change closing/acceptance date to X" | `update_draft_section` (section="price-date") | Set `closingDate` / `acceptanceDate` (ISO yyyy-MM-dd). |
+| "change listing expires to X" | `update_draft_section` (section="price-date") | LISTING-type only; set `listingExpirationDate`. |
+| "change address to X" | `update_draft_section` (section="location") | Replay street/city/state/zip; carry yearBuilt/MLS if user mentions. |
+| "change year built to X" / "change MLS to X" | `update_draft_section` (section="location") | Replay with new value. |
+| "change representation to BUYER/SELLER/DUAL/…" | `update_draft_section` (section="price-date") AND `update_draft_section` (section="owner") | Owner agent role must match the new rep (BUYERS_AGENT / SELLERS_AGENT). |
+| "add partner {name}" / "add co-agent" | `search_agent_by_name` → `add_participant` (role="co_agent") | Check `learned_agents` first. |
+| "remove partner {name}" / "remove co-agent" | `remove_participant` (role="co_agent") | Needs `participantId` from `get_draft.agentsInfo.coAgents[].id`. After delete, recompute splits via `compute_commission_splits` + `set_commission_splits` (with `verify: true`). |
+| "add referral to {name}" | `add_referral` (kind="internal" or "external") | Classification rules in `/create-transaction` step 2. |
+| "add transaction coordinator {name}" | `add_participant` (role="transaction_coordinator") | |
+| "change buyer/seller name" / "add a buyer or seller" | `update_draft_section` (section="buyer-seller") | Replay full arrays with the mutation. |
+| "remove buyer/seller {name}" | `remove_participant` (role="buyer" or "seller") | arrakis requires ≥1 buyer (TRANSACTION) and ≥1 seller — warn if last. |
+| "change team to X" / "put on {team}" | `update_draft_section` (section="owner") | Replay with new `teamId`. Ambiguity vs env name → ask per `/create-transaction` team rules. |
+| "change office to X" | `update_draft_section` (section="owner") | Replay with new `officeId`. |
+| "change splits" / "re-split 70/30" | `compute_commission_splits` → `set_commission_splits` (with `verify: true`) | Full accuracy stack — never hand-compute. |
+| "add/change commission payer" | `wire_commission_payer` | Requires 6 fields; partial → tell user to finish in Bolt. |
+| "turn on/off opcity" | `set_opcity` | |
+| "mark personal deal" / "add fees" / "set title" / "FMLS (Georgia)" | `set_finalize_flags` (personalDeal/additionalFees/title/fmls) | Pass only the affected subsection. |
 
-When the user bundles multiple changes in one prompt ("change price to $250k AND flip to multiple payments"), fire them in order; prefer one PUT per section (don't call `update_price_and_dates` twice in one turn).
+## 4. Status summary
 
-### 3. Preview + fire in the same turn
+Emit BEFORE asking any clarifying question or firing any write.
 
-Emit a ✓/→ diff-style summary showing every field that's changing, then fire the tool calls immediately.
+**Mutation mode** — diff-style:
 
 ```
-Update draft 64b1deb3 — team1
+Update draft 64b1deb3 — team1 · "123 Main St"
 
 Before → After:
-  ✓ Sale price:           $200,000 → $200,000                 (unchanged)
-  ✓ Sale commission:      $0       → $0                       (unchanged)
-  ✓ Listing commission:   $5,000   → $5,000                   (unchanged)
-  →  Payment type:        Single   → Multiple (installments)
+  ✓ Sale price:        $200,000 → $200,000        (unchanged)
+  ✓ Listing comm:      $5,000   → $5,000          (unchanged)
+  →  Payment type:     Single   → Multiple (installments)
 ```
 
-Then call `update_price_and_dates` with the full current payload plus the flipped `requiresInstallments`.
+**Resume mode** — gap-style:
 
-### 4. Post-update verification
+```
+Resuming draft — team1 · 64b1deb3
 
-After each write, call `get_draft` once to confirm the change landed (optional but recommended for money-touching changes). For commission splits changes, always call `verify_draft_splits` — this is G5 and non-negotiable.
+  ✓ Property:        123 Main St, NYC 10025
+  ✓ Sale price:      $200,000 USD
+  ✓ Sale commission: 10% = $20,000
+  ✓ Representation:  BUYER
+  ✓ Partner:         Tamir Malchizadi (60/40 with you)
+  ⚠ Year built:      not set
+  ⚠ Splits:          not yet written
+  ⚠ Opcity flag:     not set
 
-### 5. Surface warnings
+I'll fill the ⚠ items next. ✓ items stay as-is.
+```
 
-Same rule as every other skill: scan the post-write response for `errors[]`, `builderErrors[]`, `transactionWarnings[]`. Surface with 🚨 / ⚠️ above the success line. Consult `memory/post-submit-warnings.md`.
+If a `✓` line is wrong (user objects), branch into the matching mutation. **Never silently overwrite correct data.**
 
-### 6. Return the URL
+## 5. Apply changes
 
-Same URL template as `/create-transaction`:
+Mutation mode: fire the tools per the table.
+
+Resume mode: walk the gap list and call the matching tools — same surface as `/create-transaction` step 9:
+- Missing splits → `compute_commission_splits` → `set_commission_splits({ verify: true })` (G5 inside).
+- Missing payer → `wire_commission_payer` ONLY if user supplied all 6 fields. Otherwise skip; arrakis tolerates null at submit.
+- Missing no-ops → `set_opcity(false)` + `set_finalize_flags({ personalDeal, additionalFees, title, fmls? })`.
+
+**Never call `create_draft_full` from this skill.** That produces a new builderId; the point of update/resume is to keep the existing one. Use `update_draft_section` and the granular writers instead.
+
+## 6. Commission gates
+
+If commission was touched (mutation mode change OR resume-mode gap fill):
+- `compute_commission_splits` → if `renormalized: true`, run G2b type-to-confirm gate (accepted tokens: `confirm`, `I confirm`, `yes confirm`).
+- `set_commission_splits({ verify: true })` — the `verify: true` flag fires G5 server-side; on `SPLITS_DRIFT`, STOP and surface — no success URL.
+
+## 7. Surface warnings
+
+After each write, scan response for `errors[]`, `builderErrors[]`, `transactionWarnings[]`, `lifecycleState.state`. Surface ABOVE the URL with 🚨 / ⚠️. Consult `memory/error-messages.md` for `auto_retry` actions and `memory/post-submit-warnings.md` for non-fatal warnings worth flagging.
+
+## 8. Return
+
+**Mutation mode:**
+
+```
+Draft updated — {env} · 64b1deb3
+
+  →  Payment type: Single → Multiple
+```
 
 > **Review and submit:** https://bolt.{env}realbrokerage.com/transaction/create/{builderId}
 
+**Resume mode (now ready):**
+
+```
+Draft resumed and ready to submit — {env} · 64b1deb3
+
+  ✓ all fields populated
+  ✓ commission splits verified (G5 ✓)
+```
+
+> **Review and submit:** https://bolt.{env}realbrokerage.com/transaction/create/{builderId}
+>
+> Or run `/submit-draft 64b1deb3` to fire the submit from chat.
+
+**Resume mode (still has gaps after this round):**
+
+```
+Draft updated — {env} · 64b1deb3
+
+  ⚠ Still required: {soft gaps}
+```
+
+Reply with values OR fill in Bolt and run `/submit-draft`.
+
 ## What you never do
 
-- Never call `update_price_and_dates` with ONLY the changed field — arrakis replaces the whole section. Always replay existing values.
-- Never skip `get_draft` before the first mutation — you need participant ids and current values.
-- Never silently convert between flat and percent on commission changes — ask.
-- Never delete a participant by mutating the array out from under it when a DELETE endpoint exists for that sub-resource — prefer the explicit DELETE (TODO: expose as granular tools).
-- Never mark an update as "done" without re-reading the draft to confirm the change stuck.
+- Never call `create_draft_full` from this skill — it produces a new builderId.
+- Never call `update_draft_section` with ONLY the changed field — arrakis replaces the whole section. Always replay existing values from `get_draft`.
+- Never skip `get_draft` before the first mutation — you need participant ids AND current values.
+- Never silently convert between flat-and-percent on a commission change — ask.
+- Never skip G5 (`set_commission_splits({ verify: true })`) on any commission-touching change.
+- Never return a "success" URL if G5 failed.
+- Never mark an update done without confirming the change landed.
+- Never touch a draft the user didn't ask about. Resume mode auto-picks most-recent only when the prompt has no other signal; if there's an address/price hint, filter and resolve before acting.

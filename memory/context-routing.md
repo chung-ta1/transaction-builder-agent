@@ -14,6 +14,26 @@ Read in this order and stop at the first decisive signal:
 
 When steps 1–3 conflict with step 5 — **steps 1–3 win.** Keywords lie; context is ground truth.
 
+## Cross-skill session focus persistence
+
+**The builderId returned by a successful `create_draft_full` becomes the session's active draft.** All subsequent commands in the same session that reference a draft without an explicit id default to this focus:
+
+| User says (after creating draft `abc123`) | Resolves to |
+|---|---|
+| "submit it" / "send it" / "submit" | `/submit-draft` on `abc123` |
+| "change the price to 250k" / "update the buyer name" | `/update-draft` on `abc123` |
+| "delete it" / "cancel" / "scrap it" | `/delete-draft` on `abc123` |
+| "what's the status" / "show me the draft" | `get_draft(env, abc123)` |
+| "create another" / "new one" / "start over" | `/create-transaction` (new builderId) |
+| "create one for 456 Oak St" | `/create-transaction` (new builderId; the explicit address overrides focus) |
+
+**Focus loss conditions:**
+- User explicitly types a different UUID/short-hash → new focus.
+- User asks to list drafts → focus suspended; the explicit pick resolves next.
+- Session restart → focus gone; resolve via `list_my_builders`.
+
+**Never make the user re-type the builderId once the agent has it.**
+
 ## Canonical ambiguity examples and their resolutions
 
 ### "create transaction" (or variants: "create", "finalize", "make it")
@@ -41,7 +61,7 @@ When steps 1–3 conflict with step 5 — **steps 1–3 win.** Keywords lie; con
 | Context | Resolution |
 |---|---|
 | DRAFT in focus | `/delete-draft` |
-| SUBMITTED transaction in focus | `request_termination` (different operation — arrakis can't delete submitted records) |
+| SUBMITTED transaction in focus | `set_termination` (state="request") (different operation — arrakis can't delete submitted records) |
 | "Cancel the session" / "never mind" | Abort current flow, not a data mutation |
 
 ### "the referral" / "add a referral"

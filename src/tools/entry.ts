@@ -14,7 +14,7 @@ import { readPromptContent } from "../prompts/index.js";
 export const startTransactionFlow = defineTool({
   name: "start_transaction_flow",
   description:
-    "CALL THIS FIRST whenever the user describes ANY real-estate transaction or draft — phrases like 'create a transaction', 'new draft', 'build a transaction', 'start a deal', 'draft a sale', or any natural-language message that mentions commission, property address, sale/lease, agents, or referral. Returns the mandatory runbook you MUST follow to draft the transaction correctly (parallel pre-flight, parse summary, completeness check, 7-guard commission-math accuracy stack with integer-cents math, renormalization ACK gate, preview + confirm, post-write verification, audit log). Do NOT call any other transaction-builder write tools (create_draft_with_essentials, add_partner_agent, set_commission_splits, etc.) before invoking this. The runbook tells you when and in what order to call them.",
+    "CALL THIS FIRST whenever the user describes ANY real-estate transaction or draft — phrases like 'create a transaction', 'new draft', 'build a transaction', 'start a deal', 'draft a sale', or any natural-language message that mentions commission, property address, sale/lease, agents, or referral. Returns the mandatory runbook you MUST follow to draft the transaction correctly (parallel pre-flight, parse summary, completeness check, 7-guard commission-math accuracy stack with integer-cents math, renormalization ACK gate, preview + confirm, post-write verification, audit log). Do NOT call any transaction-builder write tools before invoking this. The runbook tells you when and in what order to call them.",
   input: z.object({
     userPrompt: z
       .string()
@@ -84,30 +84,3 @@ export const startListingFlow = defineTool({
   },
 });
 
-export const startResumeDraft = defineTool({
-  name: "start_resume_draft",
-  description:
-    "CALL THIS FIRST when the user asks to resume or continue a prior draft — 'resume the draft', 'pick up where I left off', 'continue the last transaction', 'finish that draft from earlier', or when the user references a specific builderId. Returns the resume-draft runbook that walks you through fetching the existing draft, identifying what's missing, filling in only the gaps, and finalizing without overwriting correct fields. Do NOT call `create_draft_with_essentials` for a resume — that creates a new builderId.",
-  input: z.object({
-    builderId: z
-      .string()
-      .optional()
-      .describe("Optional: the builderId the user mentioned. If omitted, the runbook calls `list_my_builders` to find the user's most recent unfinished draft from arrakis."),
-  }),
-  async handler({ builderId }): Promise<
-    ToolResult<{ runbook: string; builderId?: string; next: string }>
-  > {
-    try {
-      const runbook = await readPromptContent("resume_draft");
-      return ok({
-        runbook,
-        builderId,
-        next: "Follow the resume-draft runbook. Identify the target draft, show a status summary, fill only the missing pieces, verify, finalize.",
-      });
-    } catch (err) {
-      return fail(
-        `Failed to load resume-draft runbook: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  },
-});

@@ -489,6 +489,34 @@
           return;
         }
 
+        const SIGNED_IN_KEY = "tx-agent:signed-in:" + env;
+
+        // Reload-proof: if this tab already completed sign-in, show the success
+        // screen on load instead of the editable form. Without this, a refresh
+        // (or the browser re-rendering after a blocked window.close) drops the
+        // user back to an empty login form, which looks broken.
+        try {
+          if (window.sessionStorage.getItem(SIGNED_IN_KEY) === "1") {
+            document.body.classList.add("success-state");
+            successMessage.textContent =
+              `Signed in to ${env}. The agent has your token — this tab is safe to close.`;
+          }
+        } catch (_) {
+          /* sessionStorage unavailable — fall through to the form */
+        }
+
+        // Best-effort tab close. Browsers block window.close() for tabs not
+        // opened via window.open() from script (the MCP opens this via the OS),
+        // so this often no-ops — the success screen is the visible fallback.
+        function attemptClose() {
+          try {
+            window.open("", "_self");
+            window.close();
+          } catch (_) {
+            /* close blocked — success screen already shown */
+          }
+        }
+
         const keymakerUrl = `https://keymaker.${env}realbrokerage.com/api/v1/auth/signin`;
 
         function showError(msg) {
@@ -557,15 +585,19 @@
               throw new Error("Could not relay token to the MCP.");
             }
 
+            try {
+              window.sessionStorage.setItem(SIGNED_IN_KEY, "1");
+            } catch (_) {
+              /* ignore */
+            }
             document.body.classList.add("success-state");
-            successMessage.textContent = `Signed in to ${env}. You can close this tab.`;
-            setTimeout(() => {
-              try {
-                window.close();
-              } catch {
-                /* noop */
-              }
-            }, 1500);
+            successMessage.textContent =
+              `Signed in to ${env}. The agent has your token — this tab is safe to close.`;
+            // Try to close immediately and once more shortly after; if the
+            // browser blocks it, the success screen above stays put (never the
+            // editable form, thanks to the sessionStorage guard on reload).
+            attemptClose();
+            setTimeout(attemptClose, 400);
           } catch (err) {
             const message =
               err instanceof Error ? err.message : "Sign-in failed.";

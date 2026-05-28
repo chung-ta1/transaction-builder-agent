@@ -15,9 +15,18 @@ export const moneyValueSchema = z.object({
   currency: z.enum(["USD", "CAD"]),
 });
 
+// A commission percent string in [0, 100] with at most 2 decimal places.
+// 100 IS valid (a sole agent gets 100%); the upper bound just rejects nonsense
+// like "250" or "100.0001" reaching arrakis. Math is still done by
+// compute_commission_splits — this is a boundary guard, not a calculator.
+const commissionPercentString = z
+  .string()
+  .regex(/^\d+(\.\d{1,2})?$/, "percent must be a number with ≤2 decimals")
+  .refine((s) => Number(s) >= 0 && Number(s) <= 100, "percent must be between 0 and 100");
+
 export const commissionFractionalPercentSchema = z.object({
   commissionAmount: moneyValueSchema.nullish(),
-  commissionPercent: z.string().regex(/^\d+(\.\d+)?$/).nullish(),
+  commissionPercent: commissionPercentString.nullish(),
   percentEnabled: z.boolean(),
 });
 
@@ -124,6 +133,30 @@ export const commissionSplitSchema = z.object({
   participantId: z.string(),
   commission: commissionFractionalPercentSchema,
 });
+
+// Splits array with arrakis's sum-to-100 invariant enforced at the boundary.
+// Only checks when EVERY split is percent-based with a concrete percent — a
+// mixed or amount-based set (percentEnabled:false) can't be summed to 100% and
+// is left for arrakis to judge. Catches an LLM that bypasses
+// compute_commission_splits and sends e.g. 60/30 (=90) or 60/60 (=120).
+export const commissionSplitsArraySchema = z
+  .array(commissionSplitSchema)
+  .superRefine((splits, ctx) => {
+    const allPercent = splits.every(
+      (s) => s.commission.percentEnabled && s.commission.commissionPercent != null,
+    );
+    if (!allPercent || splits.length === 0) return;
+    const sumBp = splits.reduce(
+      (acc, s) => acc + Math.round(Number(s.commission.commissionPercent) * 100),
+      0,
+    );
+    if (sumBp !== 10000) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `commission split percents must sum to 100.00 (got ${(sumBp / 100).toFixed(2)})`,
+      });
+    }
+  });
 
 export const addParticipantRequestSchema = z.object({
   role: participantRoleSchema,

@@ -1,21 +1,21 @@
 import type { Tool } from "../Tool.js";
-import { createDraftWithEssentials } from "./create_draft_with_essentials.js";
-import { createFullDraft } from "./create_full_draft.js";
+import { createDraftFull } from "./create_draft_full.js";
 import { createReferralPayment } from "./create_referral_payment.js";
-import { finalizeDraft } from "./finalize_draft.js";
-import { addReferral } from "./add_referral.js";
-import { addPartnerAgent } from "./add_partner_agent.js";
 import { computeCommissionSplitsTool } from "./compute_commission_splits.js";
 
+/**
+ * Convenience tools — kept only when they encode value-add logic the runbook
+ * shouldn't carry on its own (math gates, distinct one-shot endpoints, or
+ * latency-critical orchestration).
+ *
+ *   - create_draft_full         — one-call orchestrator with parallel writes;
+ *                                 cuts happy-path wall-clock from ~3s to ~1s.
+ *   - compute_commission_splits — server-side integer-cents math (G1 gate).
+ *   - create_referral_payment   — distinct one-shot endpoint with its own G1
+ *                                 + payer-wiring + immediate-disburse logic.
+ */
 export const convenienceTools: Tool[] = [
-  // createFullDraft is listed first so the agent's tool-pick picks it by
-  // default on the happy path. The other convenience tools stay registered
-  // because update-draft, resume-draft, and mid-chain recovery need them.
-  createFullDraft,
-  createDraftWithEssentials,
-  addPartnerAgent,
-  addReferral,
-  createReferralPayment,
+  createDraftFull,
   computeCommissionSplitsTool,
-  finalizeDraft,
+  createReferralPayment,
 ];

@@ -31,16 +31,16 @@ export const prompts: PromptDef[] = [
     file: join(__dirname, "sync_rules.md"),
   },
   {
-    name: "resume_draft",
-    description:
-      "Pick up a half-finished draft transaction (via a user-supplied builderId, or `list_my_builders` to find the most recent unfinished one), fill in what's missing, and finalize — without overwriting fields that are already correct.",
-    file: join(__dirname, "resume_draft.md"),
-  },
-  {
     name: "create_listing",
     description:
       "Create a Real Brokerage listing (type=LISTING transaction-builder). 5-step flow: Property → Price/Commission/Dates → Seller → Transaction Owner → Finalize. Same smart-parse + validator pattern as transactions.",
     file: join(__dirname, "create_listing.md"),
+  },
+  {
+    name: "create_from_document",
+    description:
+      "Create a Real Brokerage transaction or listing from a PDF or image of a real-estate document (listing agreement, purchase/sale contract, buyer-rep agreement). Reads the document with the multimodal Read tool, extracts only filled-in terms (never fabricating from blank fields or form annotations), confirms the extraction, then hands off to create_listing or create_transaction.",
+    file: join(__dirname, "create_from_document.md"),
   },
   {
     name: "create_referral_payment",
@@ -51,7 +51,7 @@ export const prompts: PromptDef[] = [
   {
     name: "update_draft",
     description:
-      "Modify any field on an existing draft (transaction-builder). Routes natural-language mutations — price/commission/team/buyer/seller/co-agent/dates/installments — to the right granular tool. Single or batched changes in one turn.",
+      "Modify or resume an existing draft. Two intents share this skill: explicit mutation ('change price to X', 'add partner Y', 'flip to installments') OR resume-toward-submittable ('resume the draft', 'pick up where I left off', 'finish that draft'). Auto-picks the most-recent in-flight draft when no target is named in resume intent. Single or batched changes in one turn.",
     file: join(__dirname, "update_draft.md"),
   },
   {

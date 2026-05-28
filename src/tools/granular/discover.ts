@@ -42,6 +42,35 @@ export const searchExistingListings = defineTool({
   },
 });
 
+export const getTransaction = defineTool({
+  name: "get_transaction",
+  description:
+    "Read back a submitted Transaction or listing (a listing IS a Transaction with listing=true) by id OR by code. Use AFTER submit_draft, when get_draft 404s because the builder was consumed. Pass `id` (the submit response's id) and/or `code` (e.g. 'T9O-29P-KYU-BRU'); tries id first, then falls back to code. Returns the raw live entity so the seller-side chain can resolve the correct id for convert_listing.",
+  input: z
+    .object({
+      env: envSchema,
+      id: z.string().optional(),
+      code: z.string().optional(),
+    })
+    .refine((v) => Boolean(v.id || v.code), {
+      message: "Provide at least one of id or code",
+    }),
+  async handler({ env, id, code }, { arrakis }): Promise<ToolResult<unknown>> {
+    try {
+      if (id) {
+        try {
+          return ok({ transaction: await arrakis.getTransactionById(env, id), resolvedBy: "id" });
+        } catch (err) {
+          if (!code) return fromError(err);
+        }
+      }
+      return ok({ transaction: await arrakis.getTransactionByCode(env, code!), resolvedBy: "code" });
+    } catch (err) {
+      return fromError(err);
+    }
+  },
+});
+
 export const listMyBuilders = defineTool({
   name: "list_my_builders",
   description:

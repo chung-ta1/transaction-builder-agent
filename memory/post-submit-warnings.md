@@ -59,7 +59,7 @@ Each entry: `match` (substring to look for), `severity` (🚨 / ⚠️),
   severity: ⚠️
   plain_english: "The `transition_listing → LISTING_IN_CONTRACT` endpoint needs a pre-existing transaction; it's a chicken-and-egg with the Bolt-first flow."
   remediation:
-    - "Ignore this error — `build_transaction_from_listing` works directly from LISTING_ACTIVE, no transition needed."
+    - "Ignore this error — `convert_listing` (to="transaction") works directly from LISTING_ACTIVE, no transition needed."
     - "The listing will auto-transition when the derived transaction is submitted in Bolt."
   seen_in: "Multiple seller-side runs 2026-04-17"
 

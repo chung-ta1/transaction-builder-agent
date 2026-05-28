@@ -1,96 +1,53 @@
 import type { Tool } from "../Tool.js";
-import { initializeDraft, setTransactionOwner } from "./init.js";
-import { updateLocation, updatePriceAndDates } from "./location.js";
-import {
-  addCoAgent,
-  addOtherSideAgent,
-  addTransactionCoordinator,
-  setOwnerAgentInfo,
-  updateBuyerSeller,
-} from "./participants.js";
-import { addExternalReferral, addInternalReferral, uploadReferralW9 } from "./referral.js";
-import {
-  addCommissionPayerParticipant,
-  setCommissionPayer,
-  setCommissionSplits,
-  setOpcity,
-} from "./commission.js";
-import {
-  updateAdditionalFeesInfo,
-  updateFmlsInfo,
-  updatePersonalDealInfo,
-  updateTitleInfo,
-} from "./finalize.js";
-import { getDraft } from "./read.js";
-import { searchAgentByName } from "./search.js";
-import { listMyBuilders, searchExistingListings } from "./discover.js";
-import {
-  buildTransactionFromListing,
-  submitDraft,
-  transitionListing,
-} from "./lifecycle.js";
+import { setCommissionSplits, setOpcity, wireCommissionPayer } from "./commission.js";
+import { deleteDraft } from "./delete_draft.js";
+import { getTransaction, listMyBuilders, searchExistingListings } from "./discover.js";
+import { setFinalizeFlags } from "./finalize.js";
+import { lookupError } from "./lookup_error.js";
+import { convertListing, submitDraft } from "./lifecycle.js";
+import { addParticipant, removeParticipant } from "./participants.js";
+import { setTermination, upsertInstallments } from "./post_submit.js";
 import { preFlight } from "./pre_flight.js";
+import { preSubmitCheck } from "./pre_submit_check.js";
+import { getDraft } from "./read.js";
+import { addReferral } from "./referral.js";
+import { searchAgentByName } from "./search.js";
+import { updateDraftSection } from "./sections.js";
 import { validateAgents } from "./validate_agents.js";
 import { validateDraftCompleteness } from "./validate_draft_completeness.js";
-import { verifyAuth } from "./verify_auth.js";
-import { signOut } from "./sign_out.js";
-import { deleteDraft } from "./delete_draft.js";
-import { deleteBuyer, deleteSeller, deleteCoAgent } from "./delete_participants.js";
-import { upsertInstallments, requestTermination, undoTerminationRequest } from "./post_submit.js";
-import { verifyDraftSplits } from "./verify_draft_splits.js";
 
 export const granularTools: Tool[] = [
   // pre-flight
   preFlight,
   validateDraftCompleteness,
+  preSubmitCheck,
   validateAgents,
-  verifyAuth,
-  signOut,
-  // search
+  lookupError,
+  // search / discovery
   searchAgentByName,
-  // create / owner
-  initializeDraft,
-  setTransactionOwner,
-  // location + price
-  updateLocation,
-  updatePriceAndDates,
+  searchExistingListings,
+  listMyBuilders,
+  getDraft,
+  getTransaction,
+  // section writers (one tool, four sections — for resume/update only;
+  // create_draft_full is the path for fresh drafts)
+  updateDraftSection,
   // participants
-  updateBuyerSeller,
-  setOwnerAgentInfo,
-  addCoAgent,
-  addOtherSideAgent,
-  addTransactionCoordinator,
-  // participants — individual deletes (prefer these over rewriting whole arrays)
-  deleteBuyer,
-  deleteSeller,
-  deleteCoAgent,
+  addParticipant,
+  removeParticipant,
   // referral
-  addInternalReferral,
-  addExternalReferral,
-  uploadReferralW9,
+  addReferral,
   // commission
   setOpcity,
   setCommissionSplits,
-  verifyDraftSplits,
-  addCommissionPayerParticipant,
-  setCommissionPayer,
-  // finalize
-  updatePersonalDealInfo,
-  updateAdditionalFeesInfo,
-  updateTitleInfo,
-  updateFmlsInfo,
-  // lifecycle — submit/transition/build-from-listing/delete
+  wireCommissionPayer,
+  // finalize-flag subsections
+  setFinalizeFlags,
+  // lifecycle
   submitDraft,
-  transitionListing,
-  buildTransactionFromListing,
+  convertListing,
   deleteDraft,
-  // post-submit operations (submitted transactions, not drafts)
+  // post-submit
   upsertInstallments,
-  requestTermination,
-  undoTerminationRequest,
-  // discovery — inspect existing state before creating new
-  searchExistingListings,
-  listMyBuilders,
-  // read
-  getDraft,
+  setTermination,
 ];

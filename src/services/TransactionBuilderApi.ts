@@ -20,6 +20,7 @@ import type {
 } from "../types/schemas.js";
 
 const BASE_PATH = "/api/v1/transaction-builder";
+const TRANSACTIONS_PATH = "/api/v1/transactions";
 
 /**
  * Thin client over arrakis's TransactionBuilder REST surface. One method per
@@ -42,6 +43,25 @@ export class TransactionBuilderApi extends BaseApi {
 
   getDraft(env: Env, id: string): Promise<unknown> {
     return this.request(env, { method: "GET", url: `${BASE_PATH}/${id}` });
+  }
+
+  /**
+   * Read back a submitted Transaction (or listing — a listing IS a Transaction
+   * with listing=true) by its id. The submit endpoint consumes the builder,
+   * so `getDraft` 404s afterward; this reads the resulting live entity under
+   * /api/v1/transactions/{id} (TransactionController#getTransaction).
+   */
+  getTransactionById(env: Env, id: string): Promise<unknown> {
+    return this.request(env, { method: "GET", url: `${TRANSACTIONS_PATH}/${id}` });
+  }
+
+  /**
+   * Read back a submitted Transaction by its human-readable code (e.g.
+   * "T9O-29P-KYU-BRU"). Fallback when the id from the submit response doesn't
+   * resolve via getTransactionById. Maps to TransactionController#getByCode.
+   */
+  getTransactionByCode(env: Env, code: string): Promise<unknown> {
+    return this.request(env, { method: "GET", url: `${TRANSACTIONS_PATH}/code/${code}` });
   }
 
   /**

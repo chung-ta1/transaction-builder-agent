@@ -55,51 +55,10 @@ This is the core thing most flows get wrong:
 
 ## Scenario → action map
 
-Use these when deciding the next action based on the user's request:
-
-### User: "create a [buyer-side] transaction"
-1. `pre_flight` → auth + location extraction
-2. Parse prompt → build `answers` object
-3. `validate_draft_completeness` → structured gaps
-4. One `AskUserQuestion` batch for gaps
-5. Re-validate after answer
-6. `create_draft_with_essentials(type=TRANSACTION)`
-7. `add_partner_agent` for each partner
-8. `compute_commission_splits` → `set_commission_splits` → `verify_draft_splits`
-9. `finalize_draft` (may or may not include payer)
-10. Return `draftUrl`
-
-### User: "create a [seller-side] transaction" (or DUAL / LANDLORD)
-**Autonomous chain — do NOT stop to ask about listing:**
-1-5. Same as buyer-side up to validation
-6. `create_draft_with_essentials(type=LISTING, rep=SELLER, listingDate+listingExpirationDate)` → listing builderId
-7. `submit_draft(listingBuilderId)` — listing goes LISTING_ACTIVE; **capture `result.id`** (new post-submit Listing id; DIFFERENT from builderId)
-8. `build_transaction_from_listing(result.id)` — works on ACTIVE listings; returns transaction builderId
-9. Fill transaction-only fields (buyers, acceptance/closing dates)
-10. Commission + finalize on the transaction (compute_commission_splits → set_commission_splits → verify_draft_splits → finalize_draft)
-11. `submit_draft(txnBuilderId)` — creates the "open Transaction" arrakis needs (OR hand off to user via `/submit-draft` if they want to review first)
-12. `transition_listing(result.id from step 7, LISTING_IN_CONTRACT)` — only succeeds AFTER step 11; `ListingInContractEvent` requires a submitted Transaction linked to the listing
-
-### User: "create a listing"
-1-5. Same pre-flight + validation
-6. `create_draft_with_essentials(type=LISTING, rep=SELLER|LANDLORD)`
-7. `finalize_draft` (limited — listings skip commission-splits validation)
-8. Return `listingUrl`
-Optional follow-up: user can say "submit it" → `submit_draft`.
-
-### User: "resume the draft" or "continue where I left off"
-1. `pre_flight`
-2. `list_my_builders(env, yentaId)` for most recent in-flight builderId
-3. `get_draft(env, builderId)` to fetch current state
-4. Compute delta: what's populated vs what's needed for submit
-5. Ask only about the delta
-6. Fill + finalize
-
-### User: "record a referral payment"
-1. `pre_flight`
-2. Parse classification (REFERRAL vs OTHER / Non-Referral Payment), parties, amount
-3. AskUserQuestion for missing fields
-4. `create_referral_payment`
+The per-skill runbooks (see `src/prompts/*.md`) are the authoritative
+scenario reference. They consume this system model + the precondition table
+above to drive each flow. Do not duplicate the step-by-step here — the
+runbooks evolve faster than this doc.
 
 ## State-inspection rule
 
@@ -117,8 +76,7 @@ This prevents duplicates and lets the agent pick up mid-flow — e.g., if the pr
 | Fixable-with-value | `"Year built is required in the USA"` | Ask user for the value, retry |
 | Structural violation | `"Referral-only agents cannot own regular transactions"` | ABORT — tell user; can't proceed without changing the owner |
 | Cross-country | `"You cannot create a transaction in a country …"` | ABORT — tell user to pick a different property |
-| Stale post-submit id | `"Transaction not found by id"` on `transition_listing` / `build_transaction_from_listing` | Re-issue with `result.id` from the original `submit_draft` response, not the builderId |
-| In-contract event dependency | `"No open transaction found for in contract listing Id"` | Submit the linked transaction FIRST, then retry `transition_listing(LISTING_IN_CONTRACT)`. Transitioning before the transaction is submitted cannot succeed. |
+| Listing pre-check upstream of fix | `"Listing not in LISTING_IN_CONTRACT"` | Call `convert_listing` (to="in_contract") autonomously, retry |
 | User data needed | any "required field is missing" where user didn't give it | Ask via `AskUserQuestion` |
 
 See `memory/error-messages.md` for the full match→fix dictionary.
@@ -141,7 +99,7 @@ After each write call, run this loop:
 - Ask the user permission between sub-steps of an autonomous chain.
 - Stop at "I created the listing — should I continue?" — the user said "create a transaction," so you already know the answer.
 - Invent steps that aren't in the scenario map.
-- Skip `verify_draft_splits` after `set_commission_splits` — G5 is mandatory.
+- Skip `set_commission_splits` (with `verify: true`) after `set_commission_splits` — G5 is mandatory.
 
 **Do:**
 - Narrate your reasoning concisely ("Rep is SELLER, so creating the listing first, submitting, transitioning, then the transaction…") so the user can interrupt if you're heading the wrong way.
