@@ -15,7 +15,7 @@
 | `/submit-draft` | Promote a draft to a live Transaction / `LISTING_ACTIVE`. | "Create Transaction" button |
 | `/delete-draft` | Permanently delete an unsubmitted draft. | Delete from drafts list |
 
-No slash required — Claude recognizes natural phrasing ("create a transaction for…", "resume the last draft", "record a $500 termination fee…") and routes to the right skill.
+No slash required — Claude recognizes natural phrasing ("create a transaction for…", "list-drafts", ...) and routes to the right skill.
 
 ## First-time setup (~1 minute)
 
