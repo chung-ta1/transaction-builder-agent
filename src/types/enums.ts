@@ -94,14 +94,6 @@ export type StateOrProvince = (typeof STATE_OR_PROVINCE)[number];
 
 export type Country = "UNITED_STATES" | "CANADA";
 
-export function countryOf(state: StateOrProvince): Country {
-  return (US_STATES as readonly string[]).includes(state) ? "UNITED_STATES" : "CANADA";
-}
-
-export function currencyOf(state: StateOrProvince): "USD" | "CAD" {
-  return countryOf(state) === "UNITED_STATES" ? "USD" : "CAD";
-}
-
 /**
  * Valid commission-payer display options from arrakis's `CommissionPayerDisplay`
  * enum. Each maps to a concrete ParticipantRole when the MCP creates the payer

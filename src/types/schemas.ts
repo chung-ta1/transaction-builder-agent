@@ -230,10 +230,6 @@ export const additionalFeesSchema = z.object({
     .default([]),
 });
 
-export const opcitySchema = z.object({
-  opcity: z.boolean(),
-});
-
 export const searchAgentSchema = z.object({
   env: envSchema,
   firstName: z.string().optional(),

@@ -424,28 +424,11 @@ export class TransactionBuilderApi extends BaseApi {
     });
   }
 
-  /**
-   * Flatten a record into FormData for Spring `@ModelAttribute` parsing.
-   * Loads files from `w9FilePath` on the way in.
-   */
-  private async toFormDataAsync(body: Record<string, unknown>): Promise<FormData> {
-    const form = new FormData();
-    for (const [key, value] of Object.entries(body)) {
-      if (value === undefined || value === null) continue;
-      if (key === "w9FilePath" && typeof value === "string") {
-        form.append("file", await readFile(value), { filename: basename(value) });
-        continue;
-      }
-      form.append(key, typeof value === "string" ? value : JSON.stringify(value));
-    }
-    return form;
-  }
-
   private toFormData(body: Record<string, unknown>): FormData {
     const form = new FormData();
     for (const [key, value] of Object.entries(body)) {
       if (value === undefined || value === null) continue;
-      if (key === "w9FilePath") continue; // handled separately via toFormDataAsync when needed
+      if (key === "w9FilePath") continue; // W9 file upload not currently supported
       form.append(key, typeof value === "string" ? value : JSON.stringify(value));
     }
     return form;

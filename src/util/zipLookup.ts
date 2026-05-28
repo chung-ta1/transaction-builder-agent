@@ -303,13 +303,6 @@ const CANADIAN_LETTER_TO_PROVINCE: Readonly<Record<string, StateOrProvince>> = O
   Y: "YUKON",
 });
 
-const CANADIAN_PROVINCES = new Set<StateOrProvince>([
-  "ALBERTA", "BRITISH_COLUMBIA", "MANITOBA", "NEW_BRUNSWICK",
-  "NEWFOUNDLAND_AND_LABRADOR", "NOVA_SCOTIA", "NORTHWEST_TERRITORIES",
-  "NUNAVUT", "ONTARIO", "PRINCE_EDWARD_ISLAND", "QUEBEC",
-  "SASKATCHEWAN", "YUKON",
-]);
-
 /**
  * Best-effort guess of state/province + country + currency from a postal
  * code. Returns undefined when the format is unrecognized or the prefix
@@ -336,8 +329,4 @@ export function guessFromPostalCode(postal: string): LocationGuess | undefined {
   }
 
   return undefined;
-}
-
-export function currencyFor(state: StateOrProvince): "USD" | "CAD" {
-  return CANADIAN_PROVINCES.has(state) ? "CAD" : "USD";
 }
