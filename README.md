@@ -10,7 +10,6 @@
 | `/create-listing` | Draft a standalone listing (no buyer yet). | "Add Listing" |
 | `/create-from-document` | Create a transaction or listing from a PDF **or image** (screenshot/photo) of a listing agreement, sale contract, or buyer-rep agreement. Extracts only filled-in terms, never fabricates blanks, confirms, then runs the matching create flow. | — |
 | `/create-referral-payment` | Record a referral fee or Non-Referral Payment (termination, BPO, spiff). | "Create Referral / Payment" |
-| `/batch-create` | Create 2–5 drafts in one prompt — any mix of transactions, listings, referral payments. Gathers all gaps up front, fires the create calls concurrently, stops at the draft stage for user review. | — (two+ "Add" clicks at once) |
 | `/list-drafts` | Show every in-flight draft. | "Drafts" tab |
 | `/update-draft` | Edit a field on an existing draft (price, commission, team, participants, dates) or resume the most-recent unfinished draft and fill gaps. | Editing inside the draft |
 | `/submit-draft` | Promote a draft to a live Transaction / `LISTING_ACTIVE`. | "Create Transaction" button |
