@@ -8,18 +8,22 @@ This file is loaded by Claude Code when it opens the `transaction-builder-agent`
 transaction-builder-agent/
 ├── .claude/
 │   ├── settings.json                     # registers the MCP
-│   │   └── skills/                       # auto-generated from src/prompts/*.md
-│   │       ├── create-transaction/SKILL.md
-│   │       ├── create-listing/SKILL.md
-│   │       ├── create-from-document/SKILL.md   # PDF or image → transaction/listing
-│   │       ├── create-referral-payment/SKILL.md
-│   │       └── list-drafts/  update-draft/  submit-draft/  delete-draft/
+│   └── skills/                           # auto-generated from src/prompts/*.md
+│       ├── create-transaction/SKILL.md
+│       ├── create-listing/SKILL.md
+│       ├── create-from-document/SKILL.md   # PDF or image → transaction/listing
+│       ├── create-referral-payment/SKILL.md
+│       └── list-drafts/  update-draft/  submit-draft/  delete-draft/
 ├── memory/                               # read + written by the agent
 │   ├── transaction-rules.md              # arrakis rulebook + accuracy stack
-│   ├── arrakis-pin.md                    # drift-check pin
-│   ├── user-preferences.md               # per-user smart defaults (identity, env, office)
-│   ├── user-patterns.md                  # typical_* categorical + learned_agents cache
-│   └── error-messages.md                 # arrakis error → plain-English fix
+│   ├── arrakis-system-model.md           # arrakis object model + lifecycle states
+│   ├── context-routing.md                # which skill owns which intent
+│   ├── error-rules.json                  # arrakis error → fix (used by lookup_error)
+│   ├── error-messages.md                 # pointer to error-rules.json
+│   ├── post-submit-warnings.md           # errors[]/warnings[] to surface
+│   ├── arrakis-pin.md                    # maintainer: last reconciled arrakis SHA
+│   ├── user-preferences.md(.template)    # per-user smart defaults (identity, env, office)
+│   └── user-patterns.md(.template)       # typical_* categorical + learned_agents cache
 ├── src/
 │   ├── index.ts                          # stdio bootstrap
 │   ├── server.ts                         # MCP tool registry
@@ -31,9 +35,10 @@ transaction-builder-agent/
 │   │   ├── convenience/                  # 3 batched happy-path tools
 │   │   ├── Tool.ts                       # common types + result shape
 │   │   └── index.ts                      # combined registry (convenience first)
-│   └── types/
-│       ├── enums.ts                      # mirrors arrakis enums
-│       └── schemas.ts                    # zod schemas per tool input
+│   ├── types/
+│   │   ├── enums.ts                      # mirrors arrakis enums
+│   │   └── schemas.ts                    # zod schemas per tool input
+│   └── util/                             # draftRequirements (validator), zipLookup
 ├── test/                                 # vitest
 ├── package.json, tsconfig.json
 ├── Dockerfile, docker-compose.yml
@@ -54,14 +59,14 @@ transaction-builder-agent/
 - **Zod first.** Every tool input runs through zod; invalid LLM output becomes a structured error, never a malformed HTTP call.
 - **Money as integer cents.** Never JS floats for dollar amounts. Decimal strings at the JSON boundary, integer math in between.
 - **Axios with `validateStatus: () => true`.** HTTP status branches happen in `BaseApi.request`, not in axios's try/catch.
-- **No direct Anthropic SDK use.** All LLM reasoning lives in the Claude Code agent (`.claude/agents/transaction-creator.md`). The MCP server is mechanical.
+- **No direct Anthropic SDK use.** All LLM reasoning lives in the Claude Code runbooks (`src/prompts/*.md`, generated into `.claude/skills/`). The MCP server is mechanical.
 - **Prod block (`therealbrokerage.com`) is enforced in `src/config.ts` before any HTTP call.** Don't add a bypass.
 
-## When arrakis changes
+## When arrakis changes (maintainer-only)
 
-**Memory drift-check** runs on every `/create-transaction`: compares `memory/arrakis-pin.md:last-synced-sha` against `github.com/Realtyka/arrakis` default branch. Only mutates `arrakis-pin.md` when watched paths have actually changed — the pin advances together with the `transaction-rules.md` rule updates, so no per-user timestamp churn, no merge conflicts.
+The rulebook (`memory/transaction-rules.md`) and the enum/schema mirrors in `src/types/{enums,schemas}.ts` + `src/util/draftRequirements.ts` are kept in sync with the arrakis backend **by hand**. This requires access to the private `github.com/Realtyka/arrakis` source, so it's a maintainer task — end users never need to do it, and the create flow does not depend on it at runtime.
 
-Enum and schema values in `src/types/{enums,schemas}.ts` and `src/util/draftRequirements.ts` are synced manually from the arrakis source. When you see the drift-check flag a change in one of those files, update the TypeScript mirror by hand.
+When arrakis adds or changes a rule/enum/endpoint, a maintainer updates the relevant TypeScript mirror and the matching `transaction-rules.md` bullet, then rebuilds. `memory/arrakis-pin.md` records the last source SHA the rulebook was reconciled against.
 
 ## Testing
 
@@ -75,8 +80,8 @@ Read `memory/transaction-rules.md` → "Financial-grade accuracy stack". Seven g
 ## Self-improvement & autonomy (durable working agreement)
 
 - **Learn once, apply forever.** When the user corrects you — or you notice
-  you've hit the same friction twice — capture the lesson (here or in
-  `memory/lessons.md`) and change behavior immediately. Never make the user
+  you've hit the same friction twice — capture the lesson (in this file or the
+  relevant `memory/*.md`) and change behavior immediately. Never make the user
   give the same correction twice.
 - **Say a blocker once, then route around it.** State a hard blocker (e.g.
   "the transaction-builder MCP isn't registered in this dev session") exactly
