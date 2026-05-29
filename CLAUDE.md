@@ -41,7 +41,6 @@ transaction-builder-agent/
 │   └── util/                             # draftRequirements (validator), zipLookup
 ├── test/                                 # vitest
 ├── package.json, tsconfig.json
-├── Dockerfile, docker-compose.yml
 └── .github/workflows/build.yml
 ```
 
@@ -71,7 +70,6 @@ When arrakis adds or changes a rule/enum/endpoint, a maintainer updates the rele
 ## Testing
 
 - `npm test` → unit + scenario tests against mocked HTTP.
-- `npm run test:contract` → opt-in hits team1 for a real round-trip; requires being on the Real VPN + a valid user session.
 
 ## Financial-grade accuracy stack
 
