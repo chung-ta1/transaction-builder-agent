@@ -84,9 +84,14 @@ export const wireCommissionPayer = defineTool({
   async handler(args, { arrakis }): Promise<ToolResult<unknown>> {
     const { env, builderId, ...participant } = args;
     try {
-      const created = await arrakis.addOtherParticipant(env, builderId, participant);
-      const participantId = (created as { id?: string })?.id;
-      if (!participantId) throw new Error("arrakis did not return a participantId for the payer");
+      // addOtherParticipant returns the whole updated DRAFT, whose top-level
+      // `id` is the builderId — NOT the new participant. Using `created.id`
+      // here set the payer's participantId to the builderId, a broken
+      // self-reference that 500s at submit (verified 2026-05-29). Find the
+      // participant we just created inside the returned draft instead.
+      const draft = await arrakis.addOtherParticipant(env, builderId, participant);
+      const participantId = findCreatedParticipantId(draft, participant, builderId);
+      if (!participantId) throw new Error("could not locate the created commission-payer participant in the draft response");
       return ok(await arrakis.setCommissionPayer(env, builderId, {
         ...participant, participantId,
       }));
@@ -95,3 +100,27 @@ export const wireCommissionPayer = defineTool({
     }
   },
 });
+
+/**
+ * Locate the participant just created by addOtherParticipant inside the
+ * returned draft. The draft lists participants under `otherParticipants` (and
+ * `allParticipants`); match on role + email (the identifying fields we sent),
+ * exclude the builderId itself, and prefer the most-recently-created match.
+ */
+export function findCreatedParticipantId(
+  draft: unknown,
+  participant: { role: string; email: string },
+  builderId: string,
+): string | undefined {
+  if (!draft || typeof draft !== "object") return undefined;
+  const d = draft as Record<string, unknown>;
+  const pools = [d.otherParticipants, d.allParticipants].filter(Array.isArray) as Array<Record<string, unknown>>[];
+  const matches = pools
+    .flat()
+    .filter((p) => p && typeof p === "object")
+    .filter((p) => p.id && p.id !== builderId)
+    .filter((p) => p.role === participant.role && p.email === participant.email);
+  if (matches.length === 0) return undefined;
+  matches.sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0));
+  return matches[0].id as string;
+}

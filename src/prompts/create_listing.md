@@ -42,6 +42,7 @@ Call `validate_draft_completeness(env, userPrompt, answers)`. The validator does
 - If `listingCommission` is missing → ask (required for listings).
 - If `listingExpirationDate` looks short (<30 days) → confirm with user.
 - If seller name is missing → ask (listings always have a known seller — the user's client).
+- If ZIP (or state) is missing → call `resolve_location({ street, city, state? })` first (see `create_transaction.md` step 2's "Missing ZIP" rule; it backfills state/country/currency too); only ask the user when it returns empty or ambiguous.
 
 Batch unasked items into one `AskUserQuestion` (≤4).
 

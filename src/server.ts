@@ -10,6 +10,7 @@ import { AuthService } from "./auth/AuthService.js";
 import { TokenCache } from "./auth/TokenCache.js";
 import { SUPPORTED_ENVS } from "./config.js";
 import { prompts, readPromptContent } from "./prompts/index.js";
+import { GeocoderApi } from "./services/GeocoderApi.js";
 import { ReferralPaymentApi } from "./services/ReferralPaymentApi.js";
 import { TransactionBuilderApi } from "./services/TransactionBuilderApi.js";
 import { YentaAgentApi } from "./services/YentaAgentApi.js";
@@ -88,6 +89,7 @@ export function createServer(): CreatedServer {
     arrakis: new TransactionBuilderApi(auth),
     yenta: new YentaAgentApi(auth),
     referralPayment: new ReferralPaymentApi(auth),
+    geocoder: new GeocoderApi(),
   };
 
   const byName = new Map<string, Tool>(allTools.map((t) => [t.name, t]));

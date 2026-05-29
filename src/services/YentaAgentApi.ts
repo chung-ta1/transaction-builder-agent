@@ -46,10 +46,22 @@ export class YentaAgentApi extends BaseApi {
    * non-admin callers — verified 2026-05-29 against team1 — so it must NOT be
    * used here.
    *
-   * The server takes a SINGLE free-text `name` param (matches first/last/email),
-   * not separate firstName/lastName/email filters. We collapse the caller's
-   * fields into `name`. `sortBy` is a `List<AgentSearchSortBy>` (default
-   * FIRST_NAME,LAST_NAME), sent as repeated-key (`indexes: null`).
+   * Two things the server does that this client has to work around (both
+   * confirmed against the AgentController.searchActiveAgents Specification on
+   * 2026-05-29):
+   *
+   * 1. The `name` filter is a SINGLE token matched with `LIKE %name%` against
+   *    `firstName` OR `lastName` — NOT a firstName-AND-lastName filter. So a
+   *    joined "First Last" string LIKE-matches neither column and returns zero
+   *    rows. We therefore search by the most SELECTIVE single token (an explicit
+   *    lastName, else the surname word of a free-text query, else the first
+   *    name / email) and narrow on the remaining words client-side.
+   * 2. The response is PAGINATED and sorted (FIRST_NAME, LAST_NAME). The match
+   *    may not be on page 0 — a common surname pushes it onto a later page. So
+   *    we walk pages (bounded) until the server reports no more, accumulating
+   *    candidates, instead of reading only the first 20 and declaring "no match".
+   *
+   * `sortBy` is a `List<AgentSearchSortBy>` sent as repeated-key (`indexes: null`).
    */
   async searchAgents(env: Env, query: {
     firstName?: string;
@@ -57,29 +69,57 @@ export class YentaAgentApi extends BaseApi {
     email?: string;
     query?: string;
   }): Promise<AgentCandidate[]> {
-    // Collapse to the single free-text `name` the endpoint expects. `??`/`||`
-    // are parenthesized because mixing them unparenthesized is a syntax error.
-    const name =
-      (query.query ?? [query.firstName, query.lastName].filter(Boolean).join(" "))
-      || query.email
+    const queryWords = query.query?.trim() ? query.query.trim().split(/\s+/) : [];
+    const nameWords = [query.firstName, query.lastName, ...queryWords]
+      .map((w) => w?.trim())
+      .filter((w): w is string => !!w);
+
+    // Most selective single token: an explicit lastName beats the surname word
+    // of a free-text query (last word in "First Last" order), which beats the
+    // first name; email is the last resort. Never the joined full name (bug #1).
+    const searchToken =
+      query.lastName?.trim()
+      || nameWords[nameWords.length - 1]
+      || query.email?.trim()
       || "";
 
-    const params: Record<string, string | number | boolean | string[]> = {
-      pageNumber: 0,
-      pageSize: 20,
-      sortBy: ["FIRST_NAME", "LAST_NAME"],
-      sortDirection: "ASC",
-      name,
-    };
+    if (!searchToken) return [];
 
-    const raw = await this.request<unknown>(env, {
-      method: "GET",
-      url: `/api/v1/agents/search/active`,
-      params,
-      paramsSerializer: { indexes: null },
+    // Walk pages until the server says there are no more (bug #2). MAX_PAGES is
+    // a safety cap so a bare common token can't loop unbounded; surname searches
+    // are selective enough that this is almost always a single page.
+    const PAGE_SIZE = 20;
+    const MAX_PAGES = 25;
+    const accumulated: AgentCandidate[] = [];
+    for (let pageNumber = 0; pageNumber < MAX_PAGES; pageNumber++) {
+      const raw = await this.request<unknown>(env, {
+        method: "GET",
+        url: `/api/v1/agents/search/active`,
+        params: {
+          pageNumber,
+          pageSize: PAGE_SIZE,
+          sortBy: ["FIRST_NAME", "LAST_NAME"],
+          sortDirection: "ASC",
+          name: searchToken,
+        },
+        paramsSerializer: { indexes: null },
+      });
+      accumulated.push(...normalize(raw));
+      if (!hasMorePages(raw, pageNumber, PAGE_SIZE)) break;
+    }
+
+    // With only one search word there's nothing to narrow on — return every hit.
+    // With more (e.g. first + last), keep candidates matching ALL words so a
+    // same-surname homonym on another page doesn't masquerade as the match. If
+    // the full-name filter empties, fall back to the raw token hits so the
+    // caller can still disambiguate rather than seeing a spurious "no match".
+    if (nameWords.length <= 1) return accumulated;
+    const needles = nameWords.map((w) => w.toLowerCase());
+    const filtered = accumulated.filter((a) => {
+      const hay = `${a.firstName ?? ""} ${a.lastName ?? ""} ${a.displayName ?? ""} ${a.email ?? ""}`.toLowerCase();
+      return needles.every((n) => hay.includes(n));
     });
-
-    return normalize(raw);
+    return filtered.length ? filtered : accumulated;
   }
 
   /**
@@ -178,6 +218,29 @@ function normalize(raw: unknown): AgentCandidate[] {
 
 function asString(v: unknown): string | undefined {
   return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+function asNumber(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Whether the paginated `/search/active` response has another page after the
+ * one just read. yenta's paged shape exposes `hasNext` directly on some
+ * versions; otherwise derive it from `totalPages`, then `totalCount` /
+ * `totalElements`, vs the page just consumed. If no metadata is present, treat
+ * a completely-filled page as "maybe more" so we don't stop one short.
+ */
+function hasMorePages(raw: unknown, pageNumber: number, pageSize: number): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.hasNext === "boolean") return o.hasNext;
+  const totalPages = asNumber(o.totalPages);
+  if (totalPages != null) return pageNumber + 1 < totalPages;
+  const totalCount = asNumber(o.totalCount ?? o.totalElements);
+  if (totalCount != null) return (pageNumber + 1) * pageSize < totalCount;
+  const list = (o.results ?? o.content ?? o.items) as unknown;
+  return Array.isArray(list) && list.length === pageSize;
 }
 
 /**

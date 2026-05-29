@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AuthService } from "../auth/AuthService.js";
+import type { GeocoderApi } from "../services/GeocoderApi.js";
 import type { ReferralPaymentApi } from "../services/ReferralPaymentApi.js";
 import type { TransactionBuilderApi } from "../services/TransactionBuilderApi.js";
 import type { YentaAgentApi } from "../services/YentaAgentApi.js";
@@ -12,6 +13,7 @@ export interface ToolContext {
   arrakis: TransactionBuilderApi;
   yenta: YentaAgentApi;
   referralPayment: ReferralPaymentApi;
+  geocoder: GeocoderApi;
 }
 
 /**
