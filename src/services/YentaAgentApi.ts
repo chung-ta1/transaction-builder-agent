@@ -40,12 +40,16 @@ export class YentaAgentApi extends BaseApi {
   }
 
   /**
-   * Search via yenta's `/search/lite` endpoint (AgentController.searchWithLiteResponse).
-   * Prefers direct param filters (firstName / lastName / email) over the
-   * free-text `searchText` — narrows the result set and makes name+email
-   * disambiguation reliable. `sortBy` is a `List<AgentSearchSortBy>` on the
-   * server, so we send it as repeated-key (`indexes: null`) with the enum
-   * value `LAST_NAME` (not the legacy `createdAt` string).
+   * Search via yenta's `/search/active` endpoint (AgentController.searchActiveAgents).
+   * This is the SAME endpoint Bolt's co-agent picker calls, and it works for a
+   * normal agent. The older `/search/lite` path 403s ("Not authorized") for
+   * non-admin callers — verified 2026-05-29 against team1 — so it must NOT be
+   * used here.
+   *
+   * The server takes a SINGLE free-text `name` param (matches first/last/email),
+   * not separate firstName/lastName/email filters. We collapse the caller's
+   * fields into `name`. `sortBy` is a `List<AgentSearchSortBy>` (default
+   * FIRST_NAME,LAST_NAME), sent as repeated-key (`indexes: null`).
    */
   async searchAgents(env: Env, query: {
     firstName?: string;
@@ -53,22 +57,24 @@ export class YentaAgentApi extends BaseApi {
     email?: string;
     query?: string;
   }): Promise<AgentCandidate[]> {
+    // Collapse to the single free-text `name` the endpoint expects. `??`/`||`
+    // are parenthesized because mixing them unparenthesized is a syntax error.
+    const name =
+      (query.query ?? [query.firstName, query.lastName].filter(Boolean).join(" "))
+      || query.email
+      || "";
+
     const params: Record<string, string | number | boolean | string[]> = {
       pageNumber: 0,
-      pageSize: 10,
-      sortBy: ["LAST_NAME"],
+      pageSize: 20,
+      sortBy: ["FIRST_NAME", "LAST_NAME"],
       sortDirection: "ASC",
+      name,
     };
-    if (query.firstName) params.firstName = query.firstName;
-    if (query.lastName) params.lastName = query.lastName;
-    if (query.email) params.email = query.email;
-    if (query.query && !query.firstName && !query.lastName && !query.email) {
-      params.searchText = query.query;
-    }
 
     const raw = await this.request<unknown>(env, {
       method: "GET",
-      url: `/api/v1/agents/search/lite`,
+      url: `/api/v1/agents/search/active`,
       params,
       paramsSerializer: { indexes: null },
     });
