@@ -6,7 +6,7 @@ import { fromError } from "./init.js";
 export const submitDraft = defineTool({
   name: "submit_draft",
   description:
-    "Submit a draft — turns the builder into a live Transaction (or active Listing). Runs arrakis's full validate() chain. Map errors via memory/error-messages.md.",
+    "Submit a draft — turns the builder into a live Transaction (or active Listing). Runs arrakis's full validate() chain. Map errors via the lookup_error tool.",
   input: z.object({ env: envSchema, builderId: z.string() }),
   async handler({ env, builderId }, { arrakis }): Promise<ToolResult<unknown>> {
     try {
@@ -23,8 +23,11 @@ export const submitDraft = defineTool({
  *   to: "in_contract" → PUT /listings/{id}/transition/LISTING_IN_CONTRACT
  *   to: "transaction" → POST /transaction-builder/{id}/transaction-to-builder
  *
- * Seller-side flow uses both in sequence: in_contract first (must be in
- * LISTING_ACTIVE), then transaction (must be in LISTING_IN_CONTRACT).
+ * Normal seller-side flow uses ONLY to: "transaction" — it works directly on a
+ * LISTING_ACTIVE listing and advances it without a prior in-contract step.
+ * to: "in_contract" is admin-only (PUT transition 404s for a regular agent,
+ * verified 2026-05-28 on team1); kept for admin/maintenance use, not the
+ * autonomous seller chain.
  */
 export const convertListing = defineTool({
   name: "convert_listing",

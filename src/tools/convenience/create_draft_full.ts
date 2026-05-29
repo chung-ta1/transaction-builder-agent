@@ -32,13 +32,13 @@ import { buildDraftUrl } from "../../config.js";
  * the server-side section writes themselves run sequentially (~2–3s).
  *
  * Failure handling: if any required write fails, the partial builderId is
- * returned in `error.body.builderId` so the caller can offer /resume-draft
- * or /delete-draft.
+ * returned in `error.body.builderId` so the caller can offer /update-draft
+ * (resume/finish it) or /delete-draft.
  */
 export const createDraftFull = defineTool({
   name: "create_draft_full",
   description:
-    "Happy-path one-shot: creates a draft and runs every subsection write server-side in dependency-safe SEQUENTIAL order (arrakis rejects concurrent writes to one draft). Use AFTER `validate_draft_completeness` returns ready=true and AFTER `compute_commission_splits` has finalized the splits (with the G2b confirm gate when renormalized). Returns { builderId, draftUrl, applied[], skippedSections[], warnings[] }. On partial failure: returns the builderId of the partial draft so /resume-draft can pick it up.",
+    "Happy-path one-shot: creates a draft and runs every subsection write server-side in dependency-safe SEQUENTIAL order (arrakis rejects concurrent writes to one draft). Use AFTER `validate_draft_completeness` returns ready=true and AFTER `compute_commission_splits` has finalized the splits (with the G2b confirm gate when renormalized). Returns { builderId, draftUrl, applied[], skippedSections[], warnings[] }. On partial failure: returns the builderId of the partial draft so /update-draft can pick it up.",
   input: z.object({
     env: envSchema,
     type: z.enum(["TRANSACTION", "LISTING"]).default("TRANSACTION"),

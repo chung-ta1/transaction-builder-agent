@@ -9,7 +9,7 @@ Read-only flow — no ambiguity on direction. When the user follows up with a ro
 **When NOT to trigger:**
 - The user wants to see submitted transactions → different endpoint, different flow (not yet wrapped; use Bolt's `/transactions` list).
 - The user wants to see listings → `search_existing_listings` (also different).
-- The user wants to operate on a specific draft → use the resolved id with `/update-draft`, `/submit-draft`, `/delete-draft`, or `/resume-draft`.
+- The user wants to operate on a specific draft → use the resolved id with `/update-draft` (also handles resume/finish), `/submit-draft`, or `/delete-draft`.
 
 ## Runbook
 
@@ -28,15 +28,15 @@ If the user's phrasing hints at a type filter:
 
 ### 2. Render
 
-Format as a terse table. For EACH draft surface the signals that help the user decide what to do with it:
+Format as a terse table. For EACH draft surface the signals that help the user decide what to do with it, INCLUDING a clickable open-in-Bolt link so the user can jump straight to it (the same link the create flow returns):
 
 ```
 Your drafts in {env} (showing {n} of {total}):
 
-#  builder              type         property                         amount     status
-1  64b1deb3…            TRANSACTION  120 Main St, NY 10022            $200,000   ready to submit (updated 3m ago)
-2  c6a608d1…            TRANSACTION  123 main, NY 10024               $2,000,000 ready to submit (1h ago)
-3  9aa1e218…            LISTING      120 Main St, NY 10022            $200,000   submitted → LISTING_ACTIVE (1h ago)
+#  builder       type         property                  amount      status                          open
+1  64b1deb3…     TRANSACTION  120 Main St, NY 10022     $200,000    ready to submit (3m ago)        https://bolt.team1realbrokerage.com/transaction/create/64b1deb3-…
+2  c6a608d1…     TRANSACTION  123 main, NY 10024        $2,000,000  ready to submit (1h ago)        https://bolt.team1realbrokerage.com/transaction/create/c6a608d1-…
+3  9aa1e218…     LISTING      120 Main St, NY 10022     $200,000    submitted → LISTING_ACTIVE (1h)  https://bolt.team1realbrokerage.com/transactions/9aa1e218-…/detail
 …
 ```
 
@@ -49,6 +49,10 @@ For each row, compute:
   - Missing any of the above → "incomplete: {missing field}"
   - Listing builder that's been submitted (rare — list endpoint usually filters unsubmitted) → "submitted → LISTING_ACTIVE"
 - `amount` — salePrice or grossCommission, whichever is more meaningful for the user.
+- `open` link — build from the row's FULL `id` (use the full id in the href even though the displayed `builder` column is abbreviated), matched to the row's state:
+  - **Unsubmitted draft** (the normal case) → the draft builder URL `https://bolt.{env}realbrokerage.com/transaction/create/{id}`. This is the same URL the create flow hands back.
+  - **Submitted row** (status `submitted → LISTING_ACTIVE` or otherwise no longer a draft) → the live detail URL `https://bolt.{env}realbrokerage.com/transactions/{id}/detail`. The `transaction/create/{id}` route is STALE once the builder is consumed on submit — never emit it for a submitted row.
+  - Emit the URL as a bare link (outside any markdown that would suppress linkification) so it's clickable in Claude Desktop / claude.ai. A monospace table cell is fine; just don't wrap the URL in backticks.
 
 ### 3. Follow-up routing
 

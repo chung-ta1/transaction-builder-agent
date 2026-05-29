@@ -17,7 +17,7 @@ You are helping the user create a Real Brokerage **listing** from a plain-Englis
 
 ## Differences from a transaction (in one place so you don't get confused)
 
-- The draft is created with `POST /api/v1/transaction-builder?type=LISTING` (pass `type: "LISTING"` to `create_draft_with_essentials`).
+- The draft is created with `POST /api/v1/transaction-builder?type=LISTING` (pass `type: "LISTING"` to `create_draft_full`).
 - `representationType` is **always** `SELLER` (or `LANDLORD` for rental listings).
 - **No buyers** — listings exist before a buyer is known. Send `buyers: []`.
 - Dates: use `listingDate` (when the listing starts) + `listingExpirationDate` (when the listing agreement expires), not `acceptanceDate` / `closingDate`.
@@ -55,11 +55,12 @@ Batch unasked items into one `AskUserQuestion` (≤4).
 ### 3. Create the listing
 
 ```
-create_draft_with_essentials({
+create_draft_full({
   env,
   type: "LISTING",              // ← KEY DIFFERENCE
   transactionOwnerId: owner.yentaId,
-  location: { street, city, state, zip, country, yearBuilt, mlsNumber },
+  callerYentaId: owner.yentaId, // skips the redundant owner-set (owner == caller)
+  location: { street, city, state, zip, yearBuilt, mlsNumber },
   priceAndDates: {
     dealType: "SALE",           // or LEASE for rental listings
     propertyType: "RESIDENTIAL",
@@ -74,25 +75,27 @@ create_draft_with_essentials({
     sellers: [{ firstName, lastName, address? }],
     buyers: []                   // always empty for listings
   },
-  ownerAgent: { agentId: owner.yentaId, role: "SELLERS_AGENT" },
-  officeId: owner.officeId,
-  teamId: owner.teamId,
+  owner: { ownerAgent: { agentId: owner.yentaId, role: "SELLERS_AGENT" }, officeId: owner.officeId, teamId: owner.teamId },
+  opcity: false,                 // always required (even false)
+  finalize: { personalDeal: {personalDeal:false, representedByAgent:true}, additionalFees: {hasAdditionalFees:false, additionalFeesParticipantInfos:[]}, title: {useRealTitle:false} },
 })
 ```
 
+`create_draft_full` runs the no-op finalize calls itself (step 4 below is folded in for the happy path).
+
 ### 4. Finalize
 
-Call `finalize_draft` — the same no-op tools (set_opcity, personal_deal_info, additional_fees, title_info, fmls_info) apply to listings.
+If you used `create_draft_full` above, the finalize no-ops already ran (it fires `set_opcity` + `set_finalize_flags` internally). On the granular path, call `set_opcity(opcity=false)` then `set_finalize_flags({ personalDeal, additionalFees, title })` — the same no-op flags apply to listings (FMLS only in Georgia).
 
 ### 5. Commission splits (if applicable)
 
 If the listing will be a dual-rep deal later OR the user partners with another agent:
-- Use `add_partner_agent` + `set_commission_splits` + `set_commission_splits` (with `verify: true`) as with transactions.
-- Otherwise: single-agent listing, splits = 100% to the user.
+- Use `add_participant` (role="co_agent") + `compute_commission_splits` + `set_commission_splits({ verify: true })` as with transactions.
+- Otherwise: single-agent listing, splits = 100% to the user (pass via `commissionSplits` on `create_draft_full`).
 
 ### 6. Preview + fire (same turn) + audit log
 
-Same G4/G5 pattern as transactions — emit the preview text AND fire `finalize_draft` in the same assistant turn. No confirmation gate. Preview shows:
+Same G4/G5 pattern as transactions — emit the preview text AND fire `create_draft_full` in the same assistant turn. No confirmation gate. Preview shows:
 ```
 Listing — {env} · builder {short-id}
 Property:            {full address}

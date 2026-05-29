@@ -12,7 +12,7 @@ const AMOUNT_REQUIRING_EXPLICIT_DATE = 1000;
  * Create a Real Brokerage referral-payment transaction via
  * `POST /api/v1/agent/{yentaId}/referral-and-disburse`.
  *
- * This is the "Create Referral / Payment" flow from Bolt: one-shot
+ * This is the "Create Referral" flow from Bolt: one-shot
  * create-and-submit. arrakis has NO draft stage for this — the endpoint
  * produces a real Transaction immediately (type=REFERRAL, lifecycle=NEW).
  * The skill runbook enforces a chat-side preview + confirm gate before

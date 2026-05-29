@@ -164,7 +164,7 @@ export class TransactionBuilderApi extends BaseApi {
    * Submits the builder to arrakis, turning a draft into a real Transaction
    * (or an active Listing if type=LISTING). Runs the full server-side
    * validate() chain; on failure, the returned error needs to flow back to
-   * the user via `memory/error-messages.md`.
+   * the user via the `lookup_error` tool (rules in `memory/error-rules.json`).
    */
   submitDraft(env: Env, id: string): Promise<unknown> {
     return this.request(env, {

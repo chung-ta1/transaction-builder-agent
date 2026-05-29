@@ -21,7 +21,7 @@ export const prompts: PromptDef[] = [
   {
     name: "create_transaction",
     description:
-      "Guide Claude through creating a Real Brokerage draft transaction from a plain-English prompt. Includes the full 7-guard commission-math accuracy stack.",
+      "Guide Claude through creating a Real Brokerage transaction from a plain-English prompt — builds the draft and submits it to a live transaction by default (stops at a draft only when the user says 'draft' / 'don't submit'). Includes the full 7-guard commission-math accuracy stack.",
     file: join(__dirname, "create_transaction.md"),
   },
   {
@@ -39,7 +39,7 @@ export const prompts: PromptDef[] = [
   {
     name: "create_referral_payment",
     description:
-      "Create a referral-payment transaction (the 'Create Referral / Payment' button in Bolt). One-shot arrakis `POST /agent/{id}/referral-and-disburse`; no draft stage, so the runbook enforces an in-chat preview + explicit confirm before firing.",
+      "Create a referral-payment transaction (the 'Create Referral' button on Bolt's Transactions page; wizard at /transaction/referral). One-shot arrakis `POST /agent/{id}/referral-and-disburse`; no draft stage, so the runbook shows a full in-chat preview in the same turn as the create call (no confirm-button gate — the user interrupts with Esc).",
     file: join(__dirname, "create_referral_payment.md"),
   },
   {

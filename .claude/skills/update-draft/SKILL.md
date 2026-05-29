@@ -31,7 +31,7 @@ Surface the resolved intent + target in the parse summary so the user can catch 
 In one assistant turn, batch:
 - `pre_flight(env, userPrompt)` — non-blocking auth probe + ZIP→state.
 - `list_my_builders(env, yentaId, limit=10)` — needed for resume target resolution AND for any "the last one" / address-disambiguator phrase.
-- Read `memory/user-preferences.md`, `memory/user-patterns.md`, `memory/transaction-rules.md`, `memory/error-messages.md`.
+- Read `memory/user-preferences.md`, `memory/user-patterns.md`, `memory/transaction-rules.md`. For errors, call the `lookup_error` tool (don't read a markdown dictionary).
 
 ## 0. Resolve target
 
@@ -147,7 +147,7 @@ If commission was touched (mutation mode change OR resume-mode gap fill):
 
 ## 7. Surface warnings
 
-After each write, scan response for `errors[]`, `builderErrors[]`, `transactionWarnings[]`, `lifecycleState.state`. Surface ABOVE the URL with 🚨 / ⚠️. Consult `memory/error-messages.md` for `auto_retry` actions and `memory/post-submit-warnings.md` for non-fatal warnings worth flagging.
+After each write, scan response for `errors[]`, `builderErrors[]`, `transactionWarnings[]`, `lifecycleState.state`. Surface ABOVE the URL with 🚨 / ⚠️. Call `lookup_error({ message })` for `auto_retry` actions + class, and consult `memory/post-submit-warnings.md` for non-fatal warnings worth flagging.
 
 ## 8. Return
 

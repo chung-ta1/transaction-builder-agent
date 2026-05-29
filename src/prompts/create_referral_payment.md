@@ -1,4 +1,6 @@
-You are helping the user create a Real Brokerage **referral-payment transaction** — the "Create Referral / Payment" button in Bolt. This records a referral fee on Real's books as its own Transaction, not a line item on a sale. It is the right flow when money is moving because of a referral and there's no sale of the user's to attach it to.
+You are helping the user create a Real Brokerage **referral-payment transaction** — the **"Create Referral"** button in Bolt (on the Transactions page header, next to "Add Transaction"; the wizard opens at `/transaction/referral`). This records a referral fee on Real's books as its own Transaction, not a line item on a sale. It is the right flow when money is moving because of a referral and there's no sale of the user's to attach it to.
+
+The Bolt wizard walks 6 steps then a review screen: External Agent Information → Client Information → Deal Information (amount + closing date) → Transaction Owner → Address → Payment Information (skippable) → Review → **Create Referral**. This skill collects the same data in one pass and fires a single create-and-disburse call.
 
 ## Principle zero: context routing (load `memory/context-routing.md`)
 
@@ -7,7 +9,7 @@ You are helping the user create a Real Brokerage **referral-payment transaction*
 - User mentions payment flowing between Real and another agent/entity with no sale attached (termination fee, BPO, received-a-referral-check) → **this skill**.
 - No context signal + bare "create a referral payment" → this skill is the closest match; proceed and let the classification sub-question (REFERRAL vs OTHER) sort it out.
 
-**When to trigger:** user says "create a referral payment", "record a referral fee", "external agent owes me a referral", "I got a referral payment", "add the referral to my books", "Create Referral / Payment", or describes a referral between agents that isn't attached to a sale the user is closing. Also triggers when the user clarifies they want the button at `/transactions/all/draft` labeled "Create Referral / Payment".
+**When to trigger:** user says "create a referral payment", "record a referral fee", "external agent owes me a referral", "I got a referral payment", "add the referral to my books", "Create Referral", or describes a referral between agents that isn't attached to a sale the user is closing. Also triggers when the user clarifies they want the "Create Referral" button on the Transactions page (wizard at `/transaction/referral`).
 
 **When NOT to trigger:**
 - The user is closing a sale and a referral fee is part of that deal → use `/create-transaction` with `add_referral`.
@@ -47,7 +49,7 @@ One call, immediate submit. The resulting Transaction is live in arrakis the ins
 
 ### 0. Pre-flight (parallel, batched in one turn)
 
-- Read `memory/user-preferences.md`, `memory/user-patterns.md`, `memory/error-messages.md`.
+- Read `memory/user-preferences.md`, `memory/user-patterns.md`. For errors, call the `lookup_error` tool (don't read a markdown dictionary).
 - `pre_flight(env, userPrompt)` — returns auth + any postal codes from the prompt.
 
 If env isn't yet resolved, ask once with the standard team1/team2/.../play/stage options. Never offer prod.
@@ -66,9 +68,11 @@ Extraction rules specific to this flow (overrides any general rules):
 - `"$2,500"`, `"2500"`, `"2.5k"` → `{ amount: 2500, currency: "USD" }`.
 - Currency defaults from `officeOfSaleState` when present, else USD.
 
-**Dates**
-- `"closes May 30"`, `"close 5/30"` → `expectedCloseDate: "2026-05-30"` (infer year; never emit a date more than 18 months in the future without asking).
-- Missing → default to today + 60 days; mention in parse summary.
+**Dates** (Bolt's "Approximate Closing Date" — required `*`)
+- `"closes May 30"`, `"close 5/30"` → `expectedCloseDate: "2026-05-30"`, `expectedCloseDateSource: "user"` (infer year; never emit a date more than 18 months in the future without asking).
+- **Missing + amount < $1,000** → default to today + 60 days, pass `expectedCloseDateSource: "defaulted"`, mark `~` in the parse summary. Don't ask — a wrong date on a sub-$1k payment is low-stakes and the user can fix it in Bolt.
+- **Missing + amount ≥ $1,000** → ASK for the real date (one `AskUserQuestion`, free-text). A fabricated close date on a large referral lands in the wrong tax quarter and poisons 1099 reporting, so the tool hard-rejects a defaulted date here (`DEFAULTED_DATE_ON_LARGE_REFERRAL`). Resolve it before firing — don't default.
+- **Always tag the source.** Pass `expectedCloseDateSource: "user"` when the date came from the user, `"defaulted"` when you filled it in. The tool's large-referral guard keys off this field; omitting it silently disables the guard.
 
 **Payment info (optional)**
 - `"paid by wire on 4/10"` → `externalPaymentMethod: "WIRE"`, `externalPaymentDateSent: "2026-04-10"`.
@@ -144,7 +148,7 @@ Deterministic — every item must be ✓ or `~` before proceeding to step 4.
 - [ ] `externalAgentBrokerage`
 - [ ] `clientName` (single full-name string — for Non-Referral Payment, use the counterparty's name or a descriptive stand-in like "BPO Client")
 - [ ] `expectedReferralAmount` (`{ amount: number, currency: "USD" | "CAD" }`)
-- [ ] `expectedCloseDate` (ISO `yyyy-MM-dd` — for Non-Referral Payment, use the service/activity date)
+- [ ] `expectedCloseDate` (ISO `yyyy-MM-dd` — for Non-Referral Payment, use the service/activity date) **+ `expectedCloseDateSource`** (`"user"` if supplied, `"defaulted"` if you filled it in). On amount ≥ $1,000 the date must be `"user"`-sourced — ask if it wasn't provided.
 - [ ] `classification` (`REFERRAL` default | `OTHER` for Non-Referral Payment) — always explicit when the prompt contains a Non-Referral Payment signal; may be omitted when unambiguously a traditional referral
 
 **Conditional / optional:**
@@ -153,7 +157,7 @@ Deterministic — every item must be ✓ or `~` before proceeding to step 4.
 - [ ] `referredPropertyAddress` — only include if every required address field is present (street, city, state, zip, country). Partial addresses cause Bolt to render "Not provided" and also skip a downstream tax-table lookup, so it's all-or-nothing.
 - [ ] Payment info (`externalPaymentDateSent`, `externalPaymentMethod`, `externalReferenceNumber`, `externalSenderName`, `comments`) — only when the user has already received/sent the payment. The UI explicitly exposes a "Skip this section" button; mirror that. Don't fabricate.
 
-If any required item is missing, fire ONE `AskUserQuestion` with up to 4 items. Cycle if >4.
+**Ask only for required data that wasn't provided.** Walk the Required list above: an item the user already gave (in the prompt, an attached document, or memory) is ✓ — never re-ask it. An item with a safe silent default (currency=USD, owner=you, close date when amount < $1,000) is `~` — don't ask. Only the items still `⚠` after that pass become questions. Batch those into ONE `AskUserQuestion` (≤4 items; cycle if more). The optional/conditional items (clientEmail, address, payment info) are never blocking — surface them as "fill in Bolt later", don't gate the create on them.
 
 ### 4. Preview + fire — SAME TURN (no confirmation gate, no turn delay)
 
@@ -192,6 +196,7 @@ create_referral_payment({
   clientName, clientEmail?,
   expectedReferralAmount: { amount, currency },
   expectedCloseDate,
+  expectedCloseDateSource,        // "user" if the user gave the date, "defaulted" if you filled it in. REQUIRED for the large-referral guard to work — on amount ≥ $1,000 a "defaulted" date is rejected.
   classification?,                // "REFERRAL" (default, omit) or "OTHER" (Non-Referral Payment)
   referredPropertyAddress?,
   externalPaymentDateSent?, externalPaymentMethod?,
@@ -201,7 +206,7 @@ create_referral_payment({
 })
 ```
 
-The tool returns `{ transactionId, referralId, transactionCode, detailUrl, raw }`. If the call fails, substring-match the error against `memory/error-messages.md`; surface the fix in plain English. Never auto-retry a failed referral-and-disburse — stop, explain the error, and let the user re-issue the prompt.
+The tool returns `{ transactionId, referralId, transactionCode, detailUrl, raw }`. If the call fails, call `lookup_error({ message })` and surface `matched.fix` in plain English. Never auto-retry a failed referral-and-disburse — stop, explain the error, and let the user re-issue the prompt.
 
 ### 6. Return the URL
 
