@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
 # One-shot setup for transaction-builder-agent. Run from the project root.
-#
-# Does everything:
-#   1. Verifies Node.js is installed
-#   2. Installs npm dependencies
-#   3. Builds the MCP server (and regenerates CLI skill wrappers from source)
-#   3b. Bootstraps runtime memory files from .template versions (first-run)
-#   4. Smoke-tests the built MCP (confirms tools load via stdio)
-#   5. Kills any stale MCP processes so Claude reconnects to the fresh binary
-#   6. Registers with Claude Desktop AND Claude CLI / Claude Code globally
-#
-# Safe to re-run. Idempotent.
+# Builds the MCP, bootstraps runtime memory, and registers it with Claude.
+# Safe to re-run — idempotent.
 
 set -euo pipefail
 
@@ -95,80 +86,24 @@ echo "→ Registering with Claude Desktop + Claude CLI…"
 ./scripts/install-config.sh
 echo ""
 
-# ---- 7. Detect running Claude sessions that must be restarted ----
-# The MCP handshake happens once, at session start. Any Claude Code or
-# Claude Desktop session that was already running when setup.sh finished
-# will NOT see the newly-registered tools — no matter what `claude mcp list`
-# says. We detect that case and print a loud, unmissable banner.
-#
-# Two cases we care about:
-#   (A) setup.sh was invoked FROM INSIDE a Claude Code session ($CLAUDECODE
-#       is set by the CLI). That session is guaranteed stale.
-#   (B) Some OTHER Claude process is running in another terminal / the
-#       Desktop app — it's also stale, but we can't be sure which.
-
-RUNNING_CLI="$(pgrep -fl '/claude($| )' 2>/dev/null | grep -vE 'setup\.sh|install-config' || true)"
-RUNNING_DESKTOP="$(pgrep -fl 'Claude.app/Contents/MacOS/Claude' 2>/dev/null || true)"
-
-NEED_RESTART=0
-BANNER=""
+# ---- 7. Restart reminder ----
+# MCPs load once, at session start. Any Claude session already running when
+# setup finishes won't see the new tools until it restarts.
 if [[ -n "${CLAUDECODE:-}" ]]; then
-  NEED_RESTART=1
-  BANNER+="  • You ran setup.sh from INSIDE a Claude Code session.\n"
-  BANNER+="    That session's tool list was frozen when it started — it\n"
-  BANNER+="    will NOT see transaction-builder tools until you restart.\n"
-  BANNER+="    In this terminal: type  /exit   then run  claude  again.\n"
-fi
-if [[ -n "$RUNNING_CLI" ]]; then
-  NEED_RESTART=1
-  BANNER+="  • A 'claude' CLI process is running:\n"
-  while IFS= read -r line; do BANNER+="      $line\n"; done <<<"$RUNNING_CLI"
-  BANNER+="    Exit each one (/exit) and relaunch to pick up the new MCP.\n"
-fi
-if [[ -n "$RUNNING_DESKTOP" ]]; then
-  NEED_RESTART=1
-  BANNER+="  • Claude Desktop is running. ⌘Q (fully quit — not just close\n"
-  BANNER+="    the window) and relaunch it.\n"
-fi
-
-if [[ "$NEED_RESTART" -eq 1 ]]; then
-  cat <<EOF
-
-╔════════════════════════════════════════════════════════════════╗
-║  ⚠  RESTART REQUIRED — setup is done, but live sessions are    ║
-║     stale. MCPs load once, at session start. Until you         ║
-║     restart, Claude will still report "tools aren't loaded".   ║
-╠════════════════════════════════════════════════════════════════╣
-EOF
-  printf '%b' "$BANNER" | sed 's/^/║ /; s/$/ /'
-  cat <<'EOF'
-╚════════════════════════════════════════════════════════════════╝
-
-EOF
+  echo "⚠ You ran this from inside Claude Code. Type /exit and run 'claude' again to load the tools."
+  echo ""
 fi
 
 cat <<'EOF'
 ============================================================
-✓ Setup complete.
+✓ Setup complete. Restart Claude (⌘Q Desktop, or /exit then 'claude' in CLI).
 
-If you saw the ⚠ RESTART REQUIRED banner above, do that first.
-Otherwise:
+Then describe a deal in plain English, e.g.:
+  "Create a transaction: $20k commission sale, me and my partner
+   Tamir split 60/40, 123 Main St NYC 10025."
 
-  1) Launch Claude Desktop or run 'claude' in a fresh terminal.
-  2) In a chat, describe your deal in plain English:
+Your first draft opens a browser to sign in to Real.
 
-         "Create a transaction: $20k commission sale, me and my partner
-          Tamir split 60/40, 123 Main St NYC 10025."
-
-Your first draft will open a browser window to sign in to Real — your
-password manager should auto-fill. After that you're signed in for the
-session.
-
-Troubleshooting:
-  • ./scripts/diagnose.sh        Show current state: config paths,
-                                 smoke-test, symlinks, orphan procs.
-  • ./scripts/smoke-mcp.sh       Verify the MCP binary alone is healthy.
-  • If Claude says "tools aren't loaded in this session" AFTER you've
-    restarted: run ./scripts/diagnose.sh and report its output.
+If tools still aren't loaded after restarting, run ./scripts/diagnose.sh.
 ============================================================
 EOF

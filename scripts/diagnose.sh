@@ -4,7 +4,7 @@
 #   - Claude CLI global MCP config
 #   - MCP binary health (smoke test)
 #   - Skill symlinks in ~/.claude/skills/
-#   - Any lingering subagent references
+#   - Orphan MCP node processes
 #
 # Usage: ./scripts/diagnose.sh
 
@@ -139,10 +139,14 @@ fi
 echo ""
 
 # ---- 5. Skill symlinks ----
+# Verify every skill install-config.sh links — iterate the project's skill dirs
+# so this stays in sync as skills are added/removed (no hardcoded list).
 echo "── 5. Skill symlinks ────────────────────────────────────────"
-for skill in create-transaction create-from-document; do
+for skilldir in "$PROJECT_ROOT"/.claude/skills/*/; do
+  [[ -d "$skilldir" ]] || continue
+  skill="$(basename "$skilldir")"
   LINK="$HOME/.claude/skills/$skill"
-  TARGET="$PROJECT_ROOT/.claude/skills/$skill"
+  TARGET="${skilldir%/}"
   if [[ -L "$LINK" ]]; then
     ACTUAL=$(readlink "$LINK")
     if [[ "$ACTUAL" == "$TARGET" ]]; then
@@ -158,25 +162,8 @@ for skill in create-transaction create-from-document; do
 done
 echo ""
 
-# ---- 6. Legacy subagent check ----
-echo "── 6. Legacy subagent cleanup ───────────────────────────────"
-LEGACY_AGENT="$HOME/.claude/agents/transaction-creator.md"
-if [[ -L "$LEGACY_AGENT" || -f "$LEGACY_AGENT" ]]; then
-  echo "$(yellow ⚠) Legacy subagent file still present: $LEGACY_AGENT"
-  echo "   Claude Code subagents don't reliably see our MCP tools. Remove it:"
-  echo "     rm $LEGACY_AGENT"
-else
-  echo "$(green ✓) No legacy subagent file."
-fi
-if [[ -f "$PROJECT_ROOT/.claude/agents/transaction-creator.md" ]]; then
-  echo "$(yellow ⚠) Legacy subagent file still in project: $PROJECT_ROOT/.claude/agents/transaction-creator.md"
-  echo "   Remove it: rm '$PROJECT_ROOT/.claude/agents/transaction-creator.md'"
-  echo "   (or re-run 'npm run build' — the generator cleans it up.)"
-fi
-echo ""
-
-# ---- 7. Orphan node processes ----
-echo "── 7. Orphan node processes ─────────────────────────────────"
+# ---- 6. Orphan node processes ----
+echo "── 6. Orphan node processes ─────────────────────────────────"
 PROCS=$(pgrep -fl "node.*transaction-builder-agent/dist/index" 2>/dev/null || true)
 if [[ -z "$PROCS" ]]; then
   echo "$(green ✓) No running MCP processes (expected when Claude isn't open)."

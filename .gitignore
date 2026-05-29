@@ -20,6 +20,9 @@ coverage/
 memory/user-preferences.md
 memory/user-patterns.md
 
+# Workflow scratch — PLAN-*.md planning docs are per-session, not shared.
+tasks/
+
 # Playwright MCP probe artifacts (DOM snapshots, network traces, screenshots
 # from exploratory Bolt UI investigation). Root-only patterns so docs/ PNGs
 # and CI workflow YAMLs are unaffected.
