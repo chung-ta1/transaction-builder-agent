@@ -37,7 +37,7 @@ cd transaction-builder-agent
 
 You type:
 
-> *"$200k sale at 120 Main St NYC 10022, $5,000 commission, I'm the listing agent, NY Pro Team."*
+> *"create a transaction where a property is sold for $200k located at 120 Main St NYC 10022, $5,000 commission, I'm the listing agent, NY Pro Team."*
 
 Claude emits a `✓`/`~` parse summary (✓ = read from your message, ~ = defaulted), fires the arrakis calls, and returns a Bolt draft URL. The preview IS the review — interrupt with `Esc` if anything looks wrong. Warnings (team pre-cap fees, ledger errors) surface with 🚨 / ⚠️ above the URL.
 
