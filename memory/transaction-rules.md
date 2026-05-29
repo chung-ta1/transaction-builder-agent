@@ -35,13 +35,14 @@ explicit kind/role/section/state field — supply that field in every call.
 
 ## Representation & deal type
 
-- **Representation inference from the prompt:**
-  - "buyer's agent" / "representing the buyer" → `BUYER`
-  - "listing agent" / "seller's agent" / "representing the seller" → `SELLER`
+- **Representation inference from the prompt** — match explicit role phrasing AND first-person deal idioms (agents say "I sold/bought a place" far more often than "I'm the seller's agent"):
+  - "buyer's agent" / "representing the buyer" / **"I bought" / "I purchased" / "my buyer" / "bought for my client"** → `BUYER`
+  - "listing agent" / "seller's agent" / "representing the seller" / **"I sold" / "I listed" / "my listing" / "I'm selling [my client's] place"** → `SELLER`
   - "both sides" / "dual rep" → `DUAL`
   - "tenant side" / "for the tenant" → `TENANT`
   - "landlord side" / "for the landlord" → `LANDLORD`
-- **Never finalize representation silently** — always confirm in the preview.
+- A first-person idiom ("I sold …", "I bought …") is a **confident, deducible side** — set `representationType` from it and proceed; do NOT leave it unset and fall through to the validator's "Which side?" gap. Only ask when the prompt carries no side signal of either kind.
+- **Never finalize representation silently** — always confirm in the preview. (Inferring the side from an idiom and surfacing it on the `✓ Representation:` line IS the confirmation step; the preview, not a blocking question, is the safety net.)
 - **Deal type default**: `SALE`. Flip to `LEASE` on words like lease/rental/tenant/landlord, to `REFERRAL` only when explicitly stated.
 - **Property type default**: `RESIDENTIAL` (matches arrakis's backward-compat default). Change only if the prompt names commercial/land/condo/townhouse.
 
