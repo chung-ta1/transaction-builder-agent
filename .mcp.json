@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "transaction-builder": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PROJECT_DIR:-.}/dist/index.js"],
+      "env": {}
+    }
+  }
+}

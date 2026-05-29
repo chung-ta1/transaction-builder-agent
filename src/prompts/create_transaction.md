@@ -65,7 +65,11 @@ Extract these into the `answers` object you'll pass to the validator:
 - **Money:** `$200k|$200K|$0.2M|200000|two hundred thousand` → integer dollars. Currency from country (CAD for Canadian provinces, else USD).
 - **Percentages:** `3%`/`three percent`/`3.5%` → `"3"`/`"3.5"`. If both amount + price given, prefer amount (let `compute_commission_splits` handle it).
 - **Address:** rely on `pre_flight.locationGuesses` for state/country when ZIP present; never re-derive from city names. `NYC`→`New York`, `LA`→`Los Angeles`. **No-ZIP fallback:** when the prompt gives a state ABBREVIATION instead of a ZIP, expand it before passing to the validator: NY→NEW_YORK, CA→CALIFORNIA, TX→TEXAS, FL→FLORIDA, IL→ILLINOIS, MA→MASSACHUSETTS, WA→WASHINGTON, ON→ONTARIO, BC→BRITISH_COLUMBIA, AB→ALBERTA, QC→QUEBEC, etc. (full enum in `src/types/enums.ts`). With state present, the validator won't ask.
-- **Representation:** "buyer's agent"=BUYER, "listing/seller's agent"=SELLER, "both sides/dual"=DUAL, "tenant side"=TENANT, "landlord side"=LANDLORD.
+- **Representation:** infer from BOTH explicit role phrasing AND first-person deal idioms — agents rarely say "I'm the buyer's agent"; they say "I sold/bought a place". Map:
+  - BUYER ← "buyer's agent" / "representing the buyer" / "I bought" / "I purchased" / "my buyer" / "bought for my client"
+  - SELLER ← "listing/seller's agent" / "representing the seller" / "I sold" / "I listed" / "my listing" / "I'm selling [my client's] place"
+  - DUAL ← "both sides" / "dual" · TENANT ← "tenant side" · LANDLORD ← "landlord side"
+  - The idiom is a confident default, not a silent commitment: always surface the inferred side on the `✓ Representation:` parse-summary line so a misread is catchable. Only fire the validator's "Which side?" `AskUserQuestion` when the prompt has NO side signal at all (no role phrasing AND no sold/bought/listed idiom) — never merely because the signal was an idiom rather than the literal words "buyer's/seller's agent".
 - **Deal type:** sale/sold/purchase=SALE, lease/rental=LEASE, "referral" as a deal=REFERRAL.
 - **Splits:** `"60/40 with X"` → user 60%, X 40%. Lookup X via `learned_agents` first.
 - **Referrals:** `"30% referral to Jane"` → referral participant. Mention without % → ask.
