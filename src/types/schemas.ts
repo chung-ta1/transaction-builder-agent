@@ -241,6 +241,12 @@ export const searchAgentSchema = z.object({
   { message: "Provide at least one of firstName, lastName, email, or query." },
 );
 
+export const resolveLocationSchema = z.object({
+  street: z.string().min(1),
+  city: z.string().min(1),
+  state: stateOrProvinceSchema.optional(),
+});
+
 export type Env = z.infer<typeof envSchema>;
 export type LocationInfo = z.infer<typeof locationInfoSchema>;
 export type PriceAndDates = z.infer<typeof priceAndDatesSchema>;

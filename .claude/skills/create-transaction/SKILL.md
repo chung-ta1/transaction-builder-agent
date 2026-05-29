@@ -34,7 +34,7 @@ Surface the routing decision in the parse summary so the user can catch a misrea
 2. **Ask only when a silent default would be financially or identity-wrong.** Three legit triggers: (a) money-boundary ambiguity (flat vs % vs total), (b) classification when prompt is silent, (c) identity collision. Everything else → DEFAULT and mark `~` in the parse summary.
 3. **Always disambiguate at the money boundary.** Not `Commission: $5,000` — write `Commission: $5,000 FLAT (not 2.5% of $200k)`.
 4. **Surface post-write `errors[]`/`warnings[]` ABOVE the URL** with 🚨/⚠️. Ledger errors, team-fee errors, cross-country errors must NOT be buried.
-5. **Use history.** "same property" / "another one" / "like last time" → `list_my_builders` + `get_draft` to reuse address/team/yearBuilt/MLS silently.
+5. **Use history.** "same property" / "another one" / "like last time" → `list_my_builders` + `get_draft` to reuse address/team/MLS silently. (Year built is always confirmed per draft — never reused silently.)
 6. **Never re-ask what's already in memory or the prompt.**
 7. **Money math = `compute_commission_splits` + `set_commission_splits` (with `verify: true`) only.** Never hand-compute.
 8. **Ambiguity ≠ permission check.** "Should I proceed?" is never a valid `AskUserQuestion`.
@@ -44,7 +44,7 @@ Surface the routing decision in the parse summary so the user can catch a misrea
 ### 0. Pre-flight — fire in parallel
 
 In one assistant turn, batch:
-- Read memory files listed above. From `user-patterns.md`, capture `address_history[]` — pass it to `validate_draft_completeness` in step 4 so repeat-property drafts auto-fill yearBuilt + MLS without asking.
+- Read memory files listed above. From `user-patterns.md`, capture `address_history[]` — pass it to `validate_draft_completeness` in step 4 so repeat-property drafts auto-fill MLS without asking. (Year built is never cached — always confirm it.)
 - `list_my_builders(env, yentaId, limit=5)` → check for in-flight drafts to resume instead of creating.
 - For SELLER/DUAL/LANDLORD: also `search_existing_listings(env, ownerYentaId, lifecycleState="LISTING_ACTIVE")` and `... "LISTING_IN_CONTRACT"`.
 - `pre_flight(env, userPrompt)` → auth probe (PURE — does NOT open a browser) + ZIP→state pre-resolution. If `loginPending: true`, the user isn't signed in yet; the browser opens only when you call `waitForLogin` next (the single browser-opener).
@@ -72,6 +72,7 @@ Extract these into the `answers` object you'll pass to the validator:
 - **Money:** `$200k|$200K|$0.2M|200000|two hundred thousand` → integer dollars. Currency from country (CAD for Canadian provinces, else USD).
 - **Percentages:** `3%`/`three percent`/`3.5%` → `"3"`/`"3.5"`. If both amount + price given, prefer amount (let `compute_commission_splits` handle it).
 - **Address:** rely on `pre_flight.locationGuesses` for state/country when ZIP present; never re-derive from city names. `NYC`→`New York`, `LA`→`Los Angeles`. **No-ZIP fallback:** when the prompt gives a state ABBREVIATION instead of a ZIP, expand it before passing to the validator: NY→NEW_YORK, CA→CALIFORNIA, TX→TEXAS, FL→FLORIDA, IL→ILLINOIS, MA→MASSACHUSETTS, WA→WASHINGTON, ON→ONTARIO, BC→BRITISH_COLUMBIA, AB→ALBERTA, QC→QUEBEC, etc. (full enum in `src/types/enums.ts`). With state present, the validator won't ask.
+- **Missing ZIP (or state) → look it up before asking.** When the prompt gives a street + city but no ZIP, call `resolve_location({ street, city, state? })` (US Census Geocoder — US-only) BEFORE you let the validator's `address.zip` gap turn into a question. Each candidate carries `{ zip, state (enum), country, currency, city, matchedAddress }`, so a single match also backfills state/country/currency — skip those questions too. Branch on the result: `unambiguous: true` → use `candidates[0]` silently and note the matched address on the `✓ Property:` line so a wrong match is catchable; several distinct candidates → ask via `AskUserQuestion` with those ZIPs (with their matched addresses) as the options (not free-text); zero candidates (no match, or geocoder unreachable) → fall back to the normal free-text ZIP question. Never invent a ZIP from a city guess — an empty `resolve_location` result means ask. **Canadian property → don't geocode, ask.** The Census Geocoder is US-only, so when the location is Canadian (a Canadian province, country CANADA, or a Canadian postal-code format), skip `resolve_location` entirely and ask the user for the postal code directly via `AskUserQuestion`. (`resolve_location` also self-guards: pass it a Canadian province and it returns empty without calling out, but don't rely on that — recognise the Canadian case at parse time and just ask.)
 - **Representation:** infer from BOTH explicit role phrasing AND first-person deal idioms — agents rarely say "I'm the buyer's agent"; they say "I sold/bought a place". Map:
   - BUYER ← "buyer's agent" / "representing the buyer" / "I bought" / "I purchased" / "my buyer" / "bought for my client"
   - SELLER ← "listing/seller's agent" / "representing the seller" / "I sold" / "I listed" / "my listing" / "I'm selling [my client's] place"
@@ -102,13 +103,13 @@ Only after the user picks may you emit the parse summary. **Verified bug 2026-04
 ### 4. Validate — one call
 
 Call `validate_draft_completeness({ env, userPrompt, answers, addressHistory, agentProfile })` with:
-- `addressHistory` from `user-patterns.md:address_history` → repeat properties silently fill yearBuilt/MLS.
+- `addressHistory` from `user-patterns.md:address_history` → repeat properties silently fill MLS (year built is always asked, never cached).
 - `agentProfile` = `pre_flight.auth.user` passed straight through → seeds `owner.yentaId/officeId/teamId` silently, single-team users skip the team ask, CANDIDATE/INACTIVE status produces an early blocker.
 
 Returns `{ ready, gaps, softGaps, defaults, blockers }`:
 
 - `blockers` non-empty → STOP. Surface the message + resolution. Don't write anything.
-- `gaps` non-empty → these are HARD (block create). Batch into `AskUserQuestion` (≤4 per call, cycle if more). Use the validator's pre-written `question`+`options`. Do NOT invent your own gap list.
+- `gaps` non-empty → these are HARD (block create). Batch into `AskUserQuestion` (≤4 per call, cycle if more). Use the validator's pre-written `question`+`options`. Do NOT invent your own gap list. **Exception — `address.zip`:** don't ask it blindly. First try `resolve_location` (see step 2's "Missing ZIP" rule); only include the ZIP question in the batch if the geocoder came back empty or ambiguous. A geocoded unambiguous match drops the gap entirely (and backfills state/country/currency — re-validate with them filled).
 - `softGaps` → DON'T block on these. Surface them in the post-create message as a "still required before submit" list.
 - `ready: true` (gaps empty) → proceed.
 
@@ -166,10 +167,11 @@ A seller-side transaction is built FROM a listing. The MCP does this autonomousl
 - Emit final preview block (template below).
 - After `set_commission_splits`, IMMEDIATELY call `set_commission_splits` (with `verify: true`) (G5). Any drift → STOP, no success URL.
 
-**Commission payer (do this so the transaction doesn't land in NEW).** arrakis requires a commission payer at submit — without it, submit SUCCEEDS but parks the transaction in `NEW` with a CRITICAL "Commission Payer information is missing." So:
-- **If the user provided payer details** (title company / disbursing party — needs all 6 fields: role, first, last, company, email, phone) → call `wire_commission_payer` before submit. Role: US sale = `TITLE`, Canada = `SELLERS_LAWYER`, lease = `LANDLORD`/`TENANT`/`MANAGEMENT_COMPANY`.
-- **If NOT provided** → don't block the create. The payer is genuinely optional at create time. Surface it as the one expected post-submit CRITICAL (the user adds it in Bolt or later via `wire_commission_payer`). Do NOT fabricate a payer (a bogus title company with an invalid email is worse than a clean "add this in Bolt").
-- Only ASK for payer details up front if the user signals they want a fully-live transaction in one shot; otherwise the Bolt hand-off for the payer is acceptable and expected.
+**Commission payer — for a LIVE submit, ASK for it BEFORE submitting (don't let the txn land in NEW).** arrakis requires a commission payer to validate; without it, submit SUCCEEDS but parks the transaction in `NEW` with a CRITICAL "Commission Payer information is missing" AND the ledger is never computed — so `commissionSplits`/`paymentParticipants` stay empty and Bolt's "Payment Participants" cards render blank. A `NEW` transaction is therefore NOT a correctly-created live transaction. And `wire_commission_payer` is **builder-only** — once submitted, the builder is consumed and the agent CANNOT add the payer to the live record (the user must do it in Bolt). So the payer can only be set by the agent pre-submit. Rules:
+- **When the user asked for a LIVE transaction (the "create a transaction" default — anything not "draft"/"don't submit"): treat the payer as REQUIRED and ASK up front, before submit.** Offer two ways via `AskUserQuestion`: (a) enter the title company / disbursing party (US sale = `TITLE`, Canada = `SELLERS_LAWYER`, lease = `LANDLORD`/`TENANT`/`MANAGEMENT_COMPANY` — all 6 fields: role, first, last, company, email, phone), or (b) the **"I Don't Have The Information Yet" placeholder** (Bolt's sanctioned fill-later stub: role `TITLE`, firstName `Enter`, lastName `When Firm`, company `Fill in when firm`, email `idontknowyet@example.com`, phone `11111111111`). Then `wire_commission_payer` with the chosen values BEFORE submit so the transaction is born validated with populated Payment Participants. The placeholder is NOT the "bogus payer" warned against below — it's the official stub; offer it, don't silently insert it.
+- **If the user asked for a DRAFT (not submitting):** don't ask — the payer is genuinely optional on a draft. Note it as a "still required before submit" soft gap.
+- **Never fabricate a real-looking payer** (an invented title company with a plausible-but-fake email is worse than the explicit placeholder or a clean "add this in Bolt"). The placeholder above is allowed precisely because it self-identifies as a fill-later stub.
+- If a live submit genuinely can't get a payer (user declines both options), proceed but tell the user plainly it will land in `NEW` with empty Payment Participants until they add the payer in Bolt.
 
 ### 9. Execute — single call
 
@@ -224,9 +226,9 @@ Call `lookup_error({ message: error.message })` and branch on `matched.class`: *
 After a successful draft:
 - `user-preferences.md`: write `user.yenta_id`/`user.email`/`user.display_name` if newly learned. First draft: also set `default_env`, `default_office_id`.
 - `user-patterns.md` (categorical only — never store dollar amounts):
-  - Set/update `typical_env`, `typical_office_id`, `typical_representation_side`, `typical_deal_type`, `typical_state`, `typical_country`, `typical_year_built` when the same value appears 2+ times.
+  - Set/update `typical_env`, `typical_office_id`, `typical_representation_side`, `typical_deal_type`, `typical_state`, `typical_country` when the same value appears 2+ times. (Never set a `typical_year_built` — year built is per-property and always confirmed.)
   - For every yenta agent resolved (partners, referrals, other-side): bump `learned_agents` entry — increment `use_count`, update `last_used_at`, append new alias if user used a non-canonical name. Never store email/brokerage/status (re-fetch).
-  - **`address_history[]` — write/upsert** for the property used on this draft. Key: `${zip}|${lowercased trimmed street}` (the validator's `addressHistoryKey()` helper builds it identically). Fields: `key`, `yearBuilt`, `lastMlsNumber` (omit if "N/A"), `teamId`, `lastUsed` (today's ISO date), `useCount` (increment if entry exists, else 1). On the next draft for this property, the validator silently fills yearBuilt + MLS from this entry — no AskUserQuestion.
+  - **`address_history[]` — write/upsert** for the property used on this draft. Key: `${zip}|${lowercased trimmed street}` (the validator's `addressHistoryKey()` helper builds it identically). Fields: `key`, `lastMlsNumber` (omit if "N/A"), `teamId`, `lastUsed` (today's ISO date), `useCount` (increment if entry exists, else 1). On the next draft for this property, the validator silently fills MLS from this entry — no AskUserQuestion. **Do NOT store `yearBuilt`** — year built is confirmed on every draft (the same address has shown contradictory years), so it's never cached or auto-filled.
 
 ### 12. Return — summary block + the live transaction URL
 
@@ -246,7 +248,7 @@ After a successful draft:
 
 ## AskUserQuestion: tool, not prose
 
-Every clarifying question goes through the `AskUserQuestion` tool. Never write "Q1. ... Q2. ... reply with all three" in chat prose — that's a broken UX the user has complained about repeatedly. One missing field = one labeled question; pack ≤4 per call; cycle for more. Free-text fields render with `options: []`. Plain-English only — no `yenta_id`, `arrakis`, `participantId`, or any MCP tool name in user-visible text.
+Every clarifying question goes through the `AskUserQuestion` tool. Never write "Q1. ... Q2. ... reply with all three" in chat prose — that's a broken UX the user has complained about repeatedly. One missing field = one labeled question; pack ≤4 per call; cycle for more. `AskUserQuestion` requires **2–4 options per question** — never pass an empty `options: []` array (the tool rejects it with a validation error). For a free-text answer, give an `I'll type the answer` option (the user types it via **Other**) plus a sensible default or `Skip for now` option. Plain-English only — no `yenta_id`, `arrakis`, `participantId`, or any MCP tool name in user-visible text.
 
 Banned phrasing in user-visible text: any tool name, internal field name (`salePrice`, `commissionFractionalPercent`), or arrakis/yenta/keymaker/bolt jargon.
 

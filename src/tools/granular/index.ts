@@ -9,6 +9,7 @@ import { addParticipant, removeParticipant } from "./participants.js";
 import { setTermination, upsertInstallments } from "./post_submit.js";
 import { preFlight } from "./pre_flight.js";
 import { preSubmitCheck } from "./pre_submit_check.js";
+import { resolveLocation } from "./resolve_location.js";
 import { getDraft } from "./read.js";
 import { addReferral } from "./referral.js";
 import { searchAgentByName } from "./search.js";
@@ -25,6 +26,7 @@ export const granularTools: Tool[] = [
   lookupError,
   // search / discovery
   searchAgentByName,
+  resolveLocation,
   searchExistingListings,
   listMyBuilders,
   getDraft,
