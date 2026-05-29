@@ -75,16 +75,42 @@ echo "  $DESKTOP_CONFIG"
 #   • .claude/settings.json pre-approves it via `enabledMcpjsonServers` (skips the trust prompt)
 # We only VERIFY the handshake here and clean up obsolete per-user registrations
 # from earlier installer versions.
-if command -v claude >/dev/null 2>&1; then
+#
+# Locating the CLI is not as simple as `command -v claude`: the Claude Code
+# *local installer* drops the binary at ~/.claude/local/claude and exposes it
+# ONLY as a shell alias in the user's rc file. Non-interactive scripts like this
+# one don't load aliases, so `command -v claude` returns nothing even though the
+# CLI is installed — and the verify/cleanup step below gets silently skipped.
+# Resolve the real binary path across all known install layouts before giving up.
+resolve_claude_bin() {
+  # 1. On PATH (npm global, Homebrew, official installer symlink).
+  if command -v claude >/dev/null 2>&1; then
+    command -v claude
+    return 0
+  fi
+  # 2. Local installer location (alias-only; not on a script's PATH).
+  if [[ -x "$HOME/.claude/local/claude" ]]; then
+    echo "$HOME/.claude/local/claude"
+    return 0
+  fi
+  # 3. Honor an explicit override if the user knows where it is.
+  if [[ -n "${CLAUDE_CLI:-}" && -x "${CLAUDE_CLI}" ]]; then
+    echo "$CLAUDE_CLI"
+    return 0
+  fi
+  return 1
+}
+
+if CLAUDE_BIN="$(resolve_claude_bin)"; then
   # Earlier versions registered a user/local-scope CLI entry via `claude mcp add`.
   # That now duplicates the committed project `.mcp.json` (and can shadow it),
   # so remove it — the project config is the single source of truth.
-  claude mcp remove transaction-builder --scope user  >/dev/null 2>&1 || true
-  claude mcp remove transaction-builder --scope local >/dev/null 2>&1 || true
+  "$CLAUDE_BIN" mcp remove transaction-builder --scope user  >/dev/null 2>&1 || true
+  "$CLAUDE_BIN" mcp remove transaction-builder --scope local >/dev/null 2>&1 || true
 
   # Verify Claude Code can actually connect to the project server. Run from the
   # project dir with CLAUDE_PROJECT_DIR set so `${CLAUDE_PROJECT_DIR:-.}` resolves.
-  MCP_STATUS="$(cd "$PROJECT_ROOT" && CLAUDE_PROJECT_DIR="$PROJECT_ROOT" claude mcp list 2>&1 | grep -E '^transaction-builder' || true)"
+  MCP_STATUS="$(cd "$PROJECT_ROOT" && CLAUDE_PROJECT_DIR="$PROJECT_ROOT" "$CLAUDE_BIN" mcp list 2>&1 | grep -E '^transaction-builder' || true)"
   if echo "$MCP_STATUS" | grep -q "Connected"; then
     echo "✓ Claude Code MCP connected (project .mcp.json)."
     echo "  ↳ $MCP_STATUS"
@@ -97,9 +123,11 @@ if command -v claude >/dev/null 2>&1; then
     echo "    From $PROJECT_ROOT run: claude mcp list   (expect: ✓ Connected)"
   fi
 else
-  echo "  ! 'claude' CLI not found on PATH — skipping Claude Code check."
+  echo "  ! Could not locate the 'claude' CLI (not on PATH, not at"
+  echo "    ~/.claude/local/claude, and \$CLAUDE_CLI is unset) — skipping Claude Code check."
   echo "    Claude Desktop is already registered above. To use Claude Code, install it"
-  echo "    from https://docs.claude.com/en/docs/claude-code/overview and re-run ./setup.sh."
+  echo "    from https://docs.claude.com/en/docs/claude-code/overview"
+  echo "    (or set CLAUDE_CLI=/path/to/claude) and re-run ./setup.sh."
 fi
 
 # Cleanup: earlier installer versions wrote `mcpServers.transaction-builder`
