@@ -28,10 +28,12 @@ export interface AppliedDefault { field: string; value: unknown; reason: string;
 export interface Blocker { field: string; message: string; resolution: string; }
 export interface ValidationResult { ready: boolean; gaps: Gap[]; softGaps: Gap[]; defaults: AppliedDefault[]; blockers: Blocker[]; }
 
-/** One row in `memory/user-patterns.md:address_history`. Same address →
- * same yearBuilt, full stop. Looked up by `${zip}|${lowercased street}`. */
+/** One row in `memory/user-patterns.md:address_history`. Caches the prior MLS
+ * for a property, looked up by `${zip}|${lowercased street}`. */
 export interface AddressHistoryEntry {
   key: string;
+  /** @deprecated No longer read or written — year built is confirmed on every
+   * draft, never cached. Kept optional so older user-patterns files still parse. */
   yearBuilt?: number;
   lastMlsNumber?: string;
   teamId?: string;
@@ -141,21 +143,18 @@ export function validateDraft(input: ValidateInput): ValidationResult {
     }
   }
 
-  // Per-address cache: zip + street → prior yearBuilt / MLS. Same property
-  // always has the same year built; this kills the most common soft gap on
-  // repeat addresses.
+  // Per-address cache: zip + street → prior MLS only. Year built is NOT
+  // cached or auto-filled — it's confirmed on every draft. A property's year
+  // built is effectively per-draft user input (the same address has shown
+  // contradictory years across drafts), so a cached value is unsafe to apply
+  // silently. This matches the rulebook's "year built must never be inferred
+  // or defaulted" rule with no carve-out.
   if (a.address?.zip && a.address?.street && input.addressHistory?.length) {
     const key = addressHistoryKey(a.address.zip, a.address.street);
     const hit = input.addressHistory.find((h) => h.key === key);
-    if (hit) {
-      if (a.address.yearBuilt == null && hit.yearBuilt != null) {
-        a.address.yearBuilt = hit.yearBuilt;
-        defaults.push({ field: "address.yearBuilt", value: hit.yearBuilt, reason: `prior draft at this address (used ${hit.useCount ?? 1}×)` });
-      }
-      if (!a.address.mlsNumber && hit.lastMlsNumber) {
-        a.address.mlsNumber = hit.lastMlsNumber;
-        defaults.push({ field: "address.mlsNumber", value: hit.lastMlsNumber, reason: `prior draft at this address (used ${hit.useCount ?? 1}×)` });
-      }
+    if (hit && !a.address.mlsNumber && hit.lastMlsNumber) {
+      a.address.mlsNumber = hit.lastMlsNumber;
+      defaults.push({ field: "address.mlsNumber", value: hit.lastMlsNumber, reason: `prior draft at this address (used ${hit.useCount ?? 1}×)` });
     }
   }
 

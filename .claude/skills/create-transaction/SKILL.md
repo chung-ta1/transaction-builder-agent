@@ -34,7 +34,7 @@ Surface the routing decision in the parse summary so the user can catch a misrea
 2. **Ask only when a silent default would be financially or identity-wrong.** Three legit triggers: (a) money-boundary ambiguity (flat vs % vs total), (b) classification when prompt is silent, (c) identity collision. Everything else → DEFAULT and mark `~` in the parse summary.
 3. **Always disambiguate at the money boundary.** Not `Commission: $5,000` — write `Commission: $5,000 FLAT (not 2.5% of $200k)`.
 4. **Surface post-write `errors[]`/`warnings[]` ABOVE the URL** with 🚨/⚠️. Ledger errors, team-fee errors, cross-country errors must NOT be buried.
-5. **Use history.** "same property" / "another one" / "like last time" → `list_my_builders` + `get_draft` to reuse address/team/yearBuilt/MLS silently.
+5. **Use history.** "same property" / "another one" / "like last time" → `list_my_builders` + `get_draft` to reuse address/team/MLS silently. (Year built is always confirmed per draft — never reused silently.)
 6. **Never re-ask what's already in memory or the prompt.**
 7. **Money math = `compute_commission_splits` + `set_commission_splits` (with `verify: true`) only.** Never hand-compute.
 8. **Ambiguity ≠ permission check.** "Should I proceed?" is never a valid `AskUserQuestion`.
@@ -44,7 +44,7 @@ Surface the routing decision in the parse summary so the user can catch a misrea
 ### 0. Pre-flight — fire in parallel
 
 In one assistant turn, batch:
-- Read memory files listed above. From `user-patterns.md`, capture `address_history[]` — pass it to `validate_draft_completeness` in step 4 so repeat-property drafts auto-fill yearBuilt + MLS without asking.
+- Read memory files listed above. From `user-patterns.md`, capture `address_history[]` — pass it to `validate_draft_completeness` in step 4 so repeat-property drafts auto-fill MLS without asking. (Year built is never cached — always confirm it.)
 - `list_my_builders(env, yentaId, limit=5)` → check for in-flight drafts to resume instead of creating.
 - For SELLER/DUAL/LANDLORD: also `search_existing_listings(env, ownerYentaId, lifecycleState="LISTING_ACTIVE")` and `... "LISTING_IN_CONTRACT"`.
 - `pre_flight(env, userPrompt)` → auth probe (PURE — does NOT open a browser) + ZIP→state pre-resolution. If `loginPending: true`, the user isn't signed in yet; the browser opens only when you call `waitForLogin` next (the single browser-opener).
@@ -102,7 +102,7 @@ Only after the user picks may you emit the parse summary. **Verified bug 2026-04
 ### 4. Validate — one call
 
 Call `validate_draft_completeness({ env, userPrompt, answers, addressHistory, agentProfile })` with:
-- `addressHistory` from `user-patterns.md:address_history` → repeat properties silently fill yearBuilt/MLS.
+- `addressHistory` from `user-patterns.md:address_history` → repeat properties silently fill MLS (year built is always asked, never cached).
 - `agentProfile` = `pre_flight.auth.user` passed straight through → seeds `owner.yentaId/officeId/teamId` silently, single-team users skip the team ask, CANDIDATE/INACTIVE status produces an early blocker.
 
 Returns `{ ready, gaps, softGaps, defaults, blockers }`:
@@ -224,9 +224,9 @@ Call `lookup_error({ message: error.message })` and branch on `matched.class`: *
 After a successful draft:
 - `user-preferences.md`: write `user.yenta_id`/`user.email`/`user.display_name` if newly learned. First draft: also set `default_env`, `default_office_id`.
 - `user-patterns.md` (categorical only — never store dollar amounts):
-  - Set/update `typical_env`, `typical_office_id`, `typical_representation_side`, `typical_deal_type`, `typical_state`, `typical_country`, `typical_year_built` when the same value appears 2+ times.
+  - Set/update `typical_env`, `typical_office_id`, `typical_representation_side`, `typical_deal_type`, `typical_state`, `typical_country` when the same value appears 2+ times. (Never set a `typical_year_built` — year built is per-property and always confirmed.)
   - For every yenta agent resolved (partners, referrals, other-side): bump `learned_agents` entry — increment `use_count`, update `last_used_at`, append new alias if user used a non-canonical name. Never store email/brokerage/status (re-fetch).
-  - **`address_history[]` — write/upsert** for the property used on this draft. Key: `${zip}|${lowercased trimmed street}` (the validator's `addressHistoryKey()` helper builds it identically). Fields: `key`, `yearBuilt`, `lastMlsNumber` (omit if "N/A"), `teamId`, `lastUsed` (today's ISO date), `useCount` (increment if entry exists, else 1). On the next draft for this property, the validator silently fills yearBuilt + MLS from this entry — no AskUserQuestion.
+  - **`address_history[]` — write/upsert** for the property used on this draft. Key: `${zip}|${lowercased trimmed street}` (the validator's `addressHistoryKey()` helper builds it identically). Fields: `key`, `lastMlsNumber` (omit if "N/A"), `teamId`, `lastUsed` (today's ISO date), `useCount` (increment if entry exists, else 1). On the next draft for this property, the validator silently fills MLS from this entry — no AskUserQuestion. **Do NOT store `yearBuilt`** — year built is confirmed on every draft (the same address has shown contradictory years), so it's never cached or auto-filled.
 
 ### 12. Return — summary block + the live transaction URL
 
@@ -246,7 +246,7 @@ After a successful draft:
 
 ## AskUserQuestion: tool, not prose
 
-Every clarifying question goes through the `AskUserQuestion` tool. Never write "Q1. ... Q2. ... reply with all three" in chat prose — that's a broken UX the user has complained about repeatedly. One missing field = one labeled question; pack ≤4 per call; cycle for more. Free-text fields render with `options: []`. Plain-English only — no `yenta_id`, `arrakis`, `participantId`, or any MCP tool name in user-visible text.
+Every clarifying question goes through the `AskUserQuestion` tool. Never write "Q1. ... Q2. ... reply with all three" in chat prose — that's a broken UX the user has complained about repeatedly. One missing field = one labeled question; pack ≤4 per call; cycle for more. `AskUserQuestion` requires **2–4 options per question** — never pass an empty `options: []` array (the tool rejects it with a validation error). For a free-text answer, give an `I'll type the answer` option (the user types it via **Other**) plus a sensible default or `Skip for now` option. Plain-English only — no `yenta_id`, `arrakis`, `participantId`, or any MCP tool name in user-visible text.
 
 Banned phrasing in user-visible text: any tool name, internal field name (`salePrice`, `commissionFractionalPercent`), or arrakis/yenta/keymaker/bolt jargon.
 

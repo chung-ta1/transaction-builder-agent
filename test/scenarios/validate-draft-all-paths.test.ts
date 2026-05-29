@@ -138,18 +138,19 @@ describe("validateDraft — address history cache", () => {
     payer: { role: "TITLE", companyName: "Acme Title", firstName: "T", lastName: "C", email: "t@acme.com", phoneNumber: "5551234567" },
   };
 
-  it("cache hit fills yearBuilt + MLS silently — surfaced in defaults, not softGaps", () => {
+  it("cache hit fills MLS silently — surfaced in defaults; year built is NOT cached (stays a softGap)", () => {
     const history: AddressHistoryEntry[] = [{
       key: addressHistoryKey("10025", "123 Main St"),
-      yearBuilt: 1948, lastMlsNumber: "M12345", useCount: 3,
+      lastMlsNumber: "M12345", useCount: 3,
     }];
     const r = run(buyerSide, history);
-    expect(r.softGaps).toEqual([]);
-    expect(fields(r.defaults)).toContain("address.yearBuilt");
     expect(fields(r.defaults)).toContain("address.mlsNumber");
-    const yb = r.defaults.find((d) => d.field === "address.yearBuilt");
-    expect(yb?.value).toBe(1948);
-    expect(yb?.reason).toContain("prior draft");
+    const mls = r.defaults.find((d) => d.field === "address.mlsNumber");
+    expect(mls?.value).toBe("M12345");
+    expect(mls?.reason).toContain("prior draft");
+    // year built is never auto-filled from the cache — always confirmed.
+    expect(fields(r.defaults)).not.toContain("address.yearBuilt");
+    expect(fields(r.softGaps)).toEqual(["address.yearBuilt"]);
   });
 
   it("cache miss leaves yearBuilt + MLS as softGaps", () => {
@@ -165,22 +166,21 @@ describe("validateDraft — address history cache", () => {
   it("cache key normalizes whitespace and case — '  123 MAIN ST  ' matches '123 main st'", () => {
     const history: AddressHistoryEntry[] = [{
       key: addressHistoryKey("10025", "  123 MAIN ST  "),
-      yearBuilt: 1948,
+      lastMlsNumber: "M12345",
     }];
     const r = run(buyerSide, history);
-    expect(r.softGaps.find((g) => g.field === "address.yearBuilt")).toBeUndefined();
-    const yb = r.defaults.find((d) => d.field === "address.yearBuilt");
-    expect(yb?.value).toBe(1948);
+    const mls = r.defaults.find((d) => d.field === "address.mlsNumber");
+    expect(mls?.value).toBe("M12345");
   });
 
-  it("user-supplied yearBuilt wins over cache (no overwrite)", () => {
+  it("year built is never auto-filled from the cache, even on a key match", () => {
     const history: AddressHistoryEntry[] = [{
       key: addressHistoryKey("10025", "123 Main St"),
       yearBuilt: 1948,
     }];
-    const r = run({ ...buyerSide, address: { ...buyerSide.address!, yearBuilt: 2020 } }, history);
-    const yb = r.defaults.find((d) => d.field === "address.yearBuilt");
-    expect(yb).toBeUndefined();
+    const r = run(buyerSide, history);
+    expect(r.defaults.find((d) => d.field === "address.yearBuilt")).toBeUndefined();
+    expect(fields(r.softGaps)).toContain("address.yearBuilt");
   });
 
   it("no addressHistory input → yearBuilt soft, MLS hard", () => {
