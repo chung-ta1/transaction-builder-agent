@@ -82,58 +82,94 @@ else
 fi
 echo ""
 
-# ---- 4. Claude Code CLI config ----
-# Claude Code CLI stores MCP entries in ~/.claude.json (managed via
-# `claude mcp add`), NOT ~/.claude/settings.json. Resolve the path the same
-# way the CLI does: project-local section first, then user-scope top-level.
-echo "── 4. Claude Code CLI config ────────────────────────────────"
-CLI_CFG="$HOME/.claude.json"
-if [[ ! -f "$CLI_CFG" ]]; then
-  echo "$(yellow ⚠) $CLI_CFG does not exist (Claude Code CLI may not be installed)."
+# ---- 4. Claude Code project config ----
+# Claude Code reads project-scoped MCP servers from `.mcp.json` at the repo root,
+# pre-approved via `enabledMcpjsonServers` in the committed `.claude/settings.json`.
+# Neither lives in ~/.claude.json — verify the committed files, then confirm the
+# CLI actually connects via `claude mcp list`.
+echo "── 4. Claude Code project config (.mcp.json) ────────────────"
+MCP_JSON="$PROJECT_ROOT/.mcp.json"
+SETTINGS_JSON="$PROJECT_ROOT/.claude/settings.json"
+
+if [[ ! -f "$MCP_JSON" ]]; then
+  echo "$(red ✗) $MCP_JSON missing — Claude Code has no project server to load."
 else
-  CLI_INFO=$(node -e '
+  MCP_PATH=$(node -e '
     try {
       const cfg = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-      const projectKey = process.argv[2];
-      const local = cfg.projects && cfg.projects[projectKey] && cfg.projects[projectKey].mcpServers && cfg.projects[projectKey].mcpServers["transaction-builder"];
-      const user  = cfg.mcpServers && cfg.mcpServers["transaction-builder"];
-      const entry = local || user;
-      const scope = local ? "local (project)" : (user ? "user (global)" : "MISSING");
-      if (!entry) { console.log("MISSING\t-"); process.exit(0); }
-      console.log(((entry.args && entry.args[0]) || "MISSING") + "\t" + scope);
-    } catch { console.log("INVALID_JSON\t-"); }
-  ' "$CLI_CFG" "$PROJECT_ROOT")
-  CLI_PATH="${CLI_INFO%	*}"
-  CLI_SCOPE="${CLI_INFO#*	}"
-  echo "Config : $CLI_CFG"
-  echo "Path   : $CLI_PATH"
-  echo "Scope  : $CLI_SCOPE"
-  if [[ "$CLI_PATH" == "$BIN" ]]; then
-    echo "$(green ✓) Points at current project build."
-    if [[ "$CLI_SCOPE" == "local (project)" ]]; then
-      echo "   Note: registered project-local — only works from $PROJECT_ROOT."
-      echo "   Re-run ./setup.sh to upgrade to user scope (works from any directory)."
-    fi
-  elif [[ "$CLI_PATH" == "MISSING" ]]; then
-    echo "$(red ✗) transaction-builder not registered for Claude Code CLI — run ./setup.sh"
+      const e = cfg.mcpServers && cfg.mcpServers["transaction-builder"];
+      console.log(e && e.args && e.args[0] ? e.args[0] : "MISSING");
+    } catch { console.log("INVALID_JSON"); }
+  ' "$MCP_JSON")
+  echo "Config : $MCP_JSON"
+  echo "Path   : $MCP_PATH"
+  if [[ "$MCP_PATH" == *'${CLAUDE_PROJECT_DIR'*'}/dist/index.js' ]]; then
+    echo "$(green ✓) Declares transaction-builder with a portable project-relative path."
+  elif [[ "$MCP_PATH" == "MISSING" ]]; then
+    echo "$(red ✗) transaction-builder not declared in .mcp.json."
+  elif [[ "$MCP_PATH" == "INVALID_JSON" ]]; then
+    echo "$(red ✗) .mcp.json is not valid JSON."
   else
-    echo "$(yellow ⚠) CLI config points at a different path."
-    echo "   Run ./setup.sh from $PROJECT_ROOT to re-register."
+    echo "$(yellow ⚠) Unexpected path in .mcp.json: $MCP_PATH"
   fi
 fi
 
-# Also flag any leftover stale entry in the OLD location.
-LEGACY_CFG="$HOME/.claude/settings.json"
-if [[ -f "$LEGACY_CFG" ]]; then
+# Pre-approval check: the server must be listed in enabledMcpjsonServers or the
+# session will park it at "Pending approval".
+if [[ -f "$SETTINGS_JSON" ]]; then
+  APPROVED=$(node -e '
+    try {
+      const cfg = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+      const list = Array.isArray(cfg.enabledMcpjsonServers) ? cfg.enabledMcpjsonServers : [];
+      console.log(list.includes("transaction-builder") || cfg.enableAllProjectMcpServers === true ? "yes" : "no");
+    } catch { console.log("no"); }
+  ' "$SETTINGS_JSON")
+  if [[ "$APPROVED" == "yes" ]]; then
+    echo "$(green ✓) Pre-approved in .claude/settings.json (enabledMcpjsonServers)."
+  else
+    echo "$(yellow ⚠) Not pre-approved in .claude/settings.json — first session will prompt for approval."
+  fi
+fi
+
+# Live connection check (authoritative). Resolve the path the same way a session
+# does: from the project dir with CLAUDE_PROJECT_DIR set.
+if command -v claude >/dev/null 2>&1; then
+  LIVE="$(cd "$PROJECT_ROOT" && CLAUDE_PROJECT_DIR="$PROJECT_ROOT" claude mcp list 2>&1 | grep -E '^transaction-builder' || true)"
+  if echo "$LIVE" | grep -q "Connected"; then
+    echo "$(green ✓) claude mcp list: $LIVE"
+  elif echo "$LIVE" | grep -q "Pending approval"; then
+    echo "$(yellow ⚠) claude mcp list: $LIVE  (approve on first launch, or run ./setup.sh)"
+  else
+    echo "$(yellow ⚠) claude mcp list did not report Connected: ${LIVE:-<empty>}"
+  fi
+else
+  echo "$(yellow ⚠) 'claude' CLI not on PATH — skipping live connection check."
+fi
+
+# Flag leftover stale registrations from earlier installer versions.
+LEGACY_SETTINGS="$HOME/.claude/settings.json"
+if [[ -f "$LEGACY_SETTINGS" ]]; then
   HAS_LEGACY=$(node -e '
     try {
       const cfg = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
       console.log(cfg.mcpServers && cfg.mcpServers["transaction-builder"] ? "yes" : "no");
     } catch { console.log("no"); }
-  ' "$LEGACY_CFG")
+  ' "$LEGACY_SETTINGS")
   if [[ "$HAS_LEGACY" == "yes" ]]; then
-    echo "$(yellow ⚠) Stale entry in $LEGACY_CFG — Claude Code CLI ignores it for MCP discovery."
-    echo "   Re-run ./setup.sh to clean it up automatically."
+    echo "$(yellow ⚠) Stale mcpServers entry in $LEGACY_SETTINGS — Claude Code ignores it. Re-run ./setup.sh to clean up."
+  fi
+fi
+LEGACY_CLAUDE_JSON="$HOME/.claude.json"
+if [[ -f "$LEGACY_CLAUDE_JSON" ]]; then
+  HAS_CLI=$(node -e '
+    try {
+      const cfg = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+      const proj = cfg.projects && cfg.projects[process.argv[2]] && cfg.projects[process.argv[2]].mcpServers;
+      console.log((cfg.mcpServers && cfg.mcpServers["transaction-builder"]) || (proj && proj["transaction-builder"]) ? "yes" : "no");
+    } catch { console.log("no"); }
+  ' "$LEGACY_CLAUDE_JSON" "$PROJECT_ROOT")
+  if [[ "$HAS_CLI" == "yes" ]]; then
+    echo "$(yellow ⚠) Stale user/local-scope entry in $LEGACY_CLAUDE_JSON duplicates the project .mcp.json. Re-run ./setup.sh to clean up."
   fi
 fi
 echo ""

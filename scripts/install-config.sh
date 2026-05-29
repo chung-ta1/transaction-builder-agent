@@ -66,41 +66,44 @@ merge_mcp_into_config "$DESKTOP_CONFIG" "$BIN_PATH"
 echo "✓ Claude Desktop MCP registered."
 echo "  $DESKTOP_CONFIG"
 
-# ---------- 2. Register MCP for Claude Code CLI ----------
-# Claude Code CLI reads MCP entries from ~/.claude.json (managed via
-# `claude mcp add`), NOT ~/.claude/settings.json. Earlier installer versions
-# wrote settings.json — that registration was silently ignored by the CLI.
+# ---------- 2. Claude Code (CLI / IDE) — uses the committed project config ----------
+# Claude Code reads project-scoped MCP servers from `.mcp.json` at the repo root
+# (NOT from `.claude/settings.json`, which only carries settings like
+# `enabledMcpjsonServers`). Both files are committed, so a freshly-cloned repo is
+# self-contained — no per-user registration needed:
+#   • .mcp.json            declares the server with a `${CLAUDE_PROJECT_DIR:-.}/dist/index.js` path
+#   • .claude/settings.json pre-approves it via `enabledMcpjsonServers` (skips the trust prompt)
+# We only VERIFY the handshake here and clean up obsolete per-user registrations
+# from earlier installer versions.
 if command -v claude >/dev/null 2>&1; then
-  # Idempotent: drop any stale entry (user OR local scope), then re-add at user scope.
+  # Earlier versions registered a user/local-scope CLI entry via `claude mcp add`.
+  # That now duplicates the committed project `.mcp.json` (and can shadow it),
+  # so remove it — the project config is the single source of truth.
   claude mcp remove transaction-builder --scope user  >/dev/null 2>&1 || true
   claude mcp remove transaction-builder --scope local >/dev/null 2>&1 || true
-  claude mcp add --scope user transaction-builder node "$BIN_PATH" >/dev/null
-  echo "✓ Claude Code CLI MCP registered (user scope)."
-  echo "  ~/.claude.json"
 
-  # Verify the CLI actually connects to the server (registration alone doesn't
-  # prove the binary spawns + advertises tools). Without this, users hit
-  # "tools aren't loaded" at runtime and blame the installer.
-  MCP_STATUS="$(claude mcp list 2>&1 | grep -E '^transaction-builder' || true)"
-  if [[ -z "$MCP_STATUS" ]]; then
-    echo "  ! 'claude mcp list' did not list transaction-builder after registration."
-    echo "    Try: claude mcp list   (should show: transaction-builder ... ✓ Connected)"
-  elif echo "$MCP_STATUS" | grep -q "Connected"; then
-    echo "  ↳ claude mcp list: $MCP_STATUS"
+  # Verify Claude Code can actually connect to the project server. Run from the
+  # project dir with CLAUDE_PROJECT_DIR set so `${CLAUDE_PROJECT_DIR:-.}` resolves.
+  MCP_STATUS="$(cd "$PROJECT_ROOT" && CLAUDE_PROJECT_DIR="$PROJECT_ROOT" claude mcp list 2>&1 | grep -E '^transaction-builder' || true)"
+  if echo "$MCP_STATUS" | grep -q "Connected"; then
+    echo "✓ Claude Code MCP connected (project .mcp.json)."
+    echo "  ↳ $MCP_STATUS"
+  elif echo "$MCP_STATUS" | grep -q "Pending approval"; then
+    echo "✓ Claude Code MCP registered (project .mcp.json)."
+    echo "  ↳ $MCP_STATUS — it auto-approves via .claude/settings.json on next launch."
   else
-    echo "  ! 'claude mcp list' did not report ✓ Connected. Output was:"
-    echo "    $MCP_STATUS"
-    echo "    Re-run: node $BIN_PATH   (the server should sit silently on stdio)."
+    echo "  ! Claude Code did not report transaction-builder as connected. Output was:"
+    echo "    ${MCP_STATUS:-<empty>}"
+    echo "    From $PROJECT_ROOT run: claude mcp list   (expect: ✓ Connected)"
   fi
 else
-  echo "  ! 'claude' CLI not found on PATH — skipping CLI registration."
-  echo "    Claude Desktop is already registered above. If you also use the CLI,"
-  echo "    install it from https://docs.claude.com/en/docs/claude-code/overview"
-  echo "    and re-run ./setup.sh."
+  echo "  ! 'claude' CLI not found on PATH — skipping Claude Code check."
+  echo "    Claude Desktop is already registered above. To use Claude Code, install it"
+  echo "    from https://docs.claude.com/en/docs/claude-code/overview and re-run ./setup.sh."
 fi
 
 # Cleanup: earlier installer versions wrote `mcpServers.transaction-builder`
-# into ~/.claude/settings.json. The CLI ignores that file for MCP discovery —
+# into ~/.claude/settings.json. Claude Code ignores that file for MCP discovery —
 # remove the stale entry so future debug sessions aren't misled.
 if [[ -s "$CLI_CONFIG" ]]; then
   node -e '
@@ -115,40 +118,6 @@ if [[ -s "$CLI_CONFIG" ]]; then
       console.log("  ↳ Removed stale mcpServers.transaction-builder from ~/.claude/settings.json");
     }
   ' "$CLI_CONFIG"
-fi
-
-# The repo also ships a project-scope `.claude/settings.json` that declares
-# transaction-builder under mcpServers. Claude Code gates project-scope MCP
-# declarations behind an explicit allow-list (`enabledMcpjsonServers` in
-# ~/.claude.json > projects.<path>). When that list is empty, the project
-# declaration is silently dropped — AND it overrides the user-scope one we
-# just registered, so the server never appears in the session's tool list.
-# Explicitly whitelist transaction-builder for this project so the next
-# session picks it up on handshake.
-CLAUDE_JSON="$HOME/.claude.json"
-if [[ -s "$CLAUDE_JSON" ]]; then
-  node -e '
-    const fs = require("fs");
-    const path = process.argv[1];
-    const project = process.argv[2];
-    let cfg;
-    try { cfg = JSON.parse(fs.readFileSync(path, "utf8")); }
-    catch { console.error("  ! ~/.claude.json is not valid JSON — skipping project-scope whitelist."); process.exit(0); }
-    cfg.projects = cfg.projects || {};
-    cfg.projects[project] = cfg.projects[project] || {};
-    const p = cfg.projects[project];
-    p.enabledMcpjsonServers = Array.isArray(p.enabledMcpjsonServers) ? p.enabledMcpjsonServers : [];
-    if (!p.enabledMcpjsonServers.includes("transaction-builder")) {
-      p.enabledMcpjsonServers.push("transaction-builder");
-      // Atomic write: tmp file + rename.
-      const tmp = path + ".tmp." + process.pid;
-      fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + "\n");
-      fs.renameSync(tmp, path);
-      console.log("  ↳ Whitelisted project-scope transaction-builder in ~/.claude.json (enabledMcpjsonServers).");
-    } else {
-      console.log("  ↳ Project-scope transaction-builder already whitelisted in ~/.claude.json.");
-    }
-  ' "$CLAUDE_JSON" "$PROJECT_ROOT"
 fi
 
 # ---------- 3. Symlink skills into Claude CLI global dir ----------

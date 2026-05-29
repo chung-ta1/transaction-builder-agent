@@ -6,8 +6,9 @@ This file is loaded by Claude Code when it opens the `transaction-builder-agent`
 
 ```
 transaction-builder-agent/
+├── .mcp.json                             # registers the MCP for Claude Code (project scope)
 ├── .claude/
-│   ├── settings.json                     # registers the MCP
+│   ├── settings.json                     # pre-approves the .mcp.json server (enabledMcpjsonServers)
 │   └── skills/                           # auto-generated from src/prompts/*.md
 │       ├── create-transaction/SKILL.md
 │       ├── create-listing/SKILL.md

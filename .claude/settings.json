@@ -1,9 +1,3 @@
 {
-  "mcpServers": {
-    "transaction-builder": {
-      "command": "node",
-      "args": ["${CLAUDE_PROJECT_DIR}/dist/index.js"],
-      "env": {}
-    }
-  }
+  "enabledMcpjsonServers": ["transaction-builder"]
 }
