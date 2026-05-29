@@ -18,7 +18,7 @@ Each entry: `match` (substring to look for), `severity` (🚨 / ⚠️),
     - "If you own the deal under a Pro Team: pick a different `transactionOwnerAgentId` that isn't on that team."
     - "Or: edit the commission so it exceeds the team pre-cap fee ($10,000 on a default Pro Team)."
     - "Or: talk to your broker about a fee adjustment for small-dollar Non-Referral Payments (BPOs, termination fees, etc.)."
-  seen_in: "Non-Referral Payment $500 by pwadmin/Pro Team — 2026-04-17"
+  seen_in: "Non-Referral Payment $500 by a Pro Team member — 2026-04-17"
 
 - match: "Year built is required in the USA"
   severity: 🚨

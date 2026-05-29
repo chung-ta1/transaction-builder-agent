@@ -42,9 +42,9 @@ When steps 1–3 conflict with step 5 — **steps 1–3 win.** Keywords lie; con
 |---|---|---|
 | Active draft under discussion in last 3 turns | Submit that draft | `/submit-draft` |
 | Bolt "Create Transaction" button mentioned in the same session | Submit that draft (button = submit) | `/submit-draft` |
-| Fresh session, `list_my_builders` returns no in-progress drafts | Create a new draft | `/create-transaction` |
+| Fresh session, `list_my_builders` returns no in-progress drafts | Create a new transaction (builds the draft AND submits it to live by default; stops at a draft only if the user says "draft" / "don't submit") | `/create-transaction` |
 | Fresh session, but `list_my_builders` returns a matching draft (address match) | ASK once: "Submit existing or create new?" | — |
-| Prompt explicitly says "a new transaction" / "another one" / "fresh draft" | Create new, regardless of context | `/create-transaction` |
+| Prompt explicitly says "a new transaction" / "another one" / "fresh draft" | Create new, regardless of context (live by default unless "draft") | `/create-transaction` |
 | Prompt explicitly says "submit" / "send" / "ship" / "finalize" | Submit, regardless of context | `/submit-draft` |
 
 ### "update" / "change" / "modify"
@@ -53,7 +53,7 @@ When steps 1–3 conflict with step 5 — **steps 1–3 win.** Keywords lie; con
 |---|---|
 | Active draft in focus + mutation verb | `/update-draft` on focused draft |
 | Explicit builderId | `/update-draft` on that id |
-| "Resume the draft" / "pick up where I left off" | `/resume-draft` (fills gaps, not arbitrary edits) |
+| "Resume the draft" / "pick up where I left off" / "finish that draft" | `/update-draft` (resume-toward-submittable intent — fills gaps, not arbitrary edits) |
 | No focus + no id + no recent drafts | ASK which draft |
 
 ### "delete" / "cancel" / "throw away"
@@ -103,7 +103,7 @@ Ambiguity that warrants an `AskUserQuestion`:
 
 1. **Money interpretation at a boundary.** "$5,000 commission on $200k sale" — flat or 2.5%? Ask.
 2. **Classification when silent.** REFERRAL vs OTHER (Non-Referral Payment) when the prompt gives zero signal either way.
-3. **Identity collision.** Two people with the same first name in `search_agent_by_name` results; `team1` when env isn't resolved; a user prompt like "I'm not pwadmin".
+3. **Identity collision.** Two people with the same first name in `search_agent_by_name` results; `team1` when env isn't resolved; a user prompt like "I'm not {cached name}" (the owner ≠ the authenticated/cached identity).
 4. **Destructive action with ambiguous target.** "Delete the draft" when multiple drafts match.
 5. **Create-vs-submit ambiguity.** Fresh session + prompt matches an existing in-progress draft returned by `list_my_builders`.
 

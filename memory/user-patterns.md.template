@@ -22,10 +22,13 @@ typical_deal_type: null
 typical_country: null
 typical_state: null
 
-# yearBuilt is ALWAYS required for transaction drafts (arrakis enforces it).
-# Offer `typical_year_built` as the FIRST option in the AskUserQuestion so the
-# user can one-click through when the answer hasn't changed. Still ask every
-# run — this is just the default, not a silent value.
+# yearBuilt is ALWAYS required for US transaction drafts (arrakis enforces it).
+# DO NOT default or pre-populate it from this field. Per transaction-rules.md
+# ("Year built must NEVER be inferred or defaulted", user rule 2026-04-21),
+# ask via a plain free-text AskUserQuestion every run — no cached default,
+# no 2020/2000/1970 options. This field is retained only for the per-address
+# cache (address_history) path, where a confirmed prior year for the SAME
+# property may auto-fill; a bare typical year must never seed the question.
 typical_year_built: null
 
 # MLS numbers the user has used recently. Surfaced as a default option on
@@ -34,8 +37,9 @@ recent_mls_numbers: []
 
 # Teams the authenticated user belongs to (from yenta teamMemberships).
 # Agent resolves "I am on <teamName>" to teamId and sets it on the draft via
-# set_owner_agent_info. Without this, the Bolt UI shows Team = empty and the
-# user must pick manually before submit.
+# the owner section (update_draft_section section="owner", or create_draft_full's
+# `owner.teamId`). Without this, the Bolt UI shows Team = empty and the user
+# must pick manually before submit.
 teams: []
 
 typical_team_id: null

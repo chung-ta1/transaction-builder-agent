@@ -14,5 +14,4 @@ user:
   display_name: null
 default_env: null
 default_office_id: null
-last_representation_side: null
 ```

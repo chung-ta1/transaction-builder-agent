@@ -19,9 +19,7 @@ transaction-builder-agent/
 │   ├── arrakis-system-model.md           # arrakis object model + lifecycle states
 │   ├── context-routing.md                # which skill owns which intent
 │   ├── error-rules.json                  # arrakis error → fix (used by lookup_error)
-│   ├── error-messages.md                 # pointer to error-rules.json
 │   ├── post-submit-warnings.md           # errors[]/warnings[] to surface
-│   ├── arrakis-pin.md                    # maintainer: last reconciled arrakis SHA
 │   ├── user-preferences.md(.template)    # per-user smart defaults (identity, env, office)
 │   └── user-patterns.md(.template)       # typical_* categorical + learned_agents cache
 ├── src/
@@ -49,7 +47,7 @@ transaction-builder-agent/
 - **New arrakis endpoint** (e.g., arrakis adds `/{id}/flex-team`): add a method to `src/services/TransactionBuilderApi.ts`, add a granular tool in `src/tools/granular/`, register it in `src/tools/granular/index.ts`. The agent will pick it up automatically via the tools registry.
 - **New convenience composition**: add a file in `src/tools/convenience/`, register in `src/tools/convenience/index.ts`. Convenience tools are thin wrappers around the granular ones + arrakis endpoints directly.
 - **New edge case to capture** (e.g., arrakis adds a new required field in DUAL rep): edit `memory/transaction-rules.md`. The agent loads it on every run.
-- **New error → fix mapping**: edit `memory/error-messages.md`. The agent also appends new stubs on unmapped errors automatically.
+- **New error → fix mapping**: edit `memory/error-rules.json` (each rule: unique `match` substring, `class` A/B/C/D, `fix`, optional `field`/`auto_retry`), then `npm run build`. The `lookup_error` tool reads this at runtime; there is no markdown error dictionary.
 - **New env-wide rule** (e.g., a new env `team6`): add to `SUPPORTED_ENVS` in `src/config.ts`, update the env enum in `src/types/schemas.ts:envSchema`.
 
 ## Conventions
@@ -65,7 +63,7 @@ transaction-builder-agent/
 
 The rulebook (`memory/transaction-rules.md`) and the enum/schema mirrors in `src/types/{enums,schemas}.ts` + `src/util/draftRequirements.ts` are kept in sync with the arrakis backend **by hand**. This requires access to the private `github.com/Realtyka/arrakis` source, so it's a maintainer task — end users never need to do it, and the create flow does not depend on it at runtime.
 
-When arrakis adds or changes a rule/enum/endpoint, a maintainer updates the relevant TypeScript mirror and the matching `transaction-rules.md` bullet, then rebuilds. `memory/arrakis-pin.md` records the last source SHA the rulebook was reconciled against.
+When arrakis adds or changes a rule/enum/endpoint, a maintainer updates the relevant TypeScript mirror and the matching `transaction-rules.md` bullet, then rebuilds.
 
 ## Testing
 

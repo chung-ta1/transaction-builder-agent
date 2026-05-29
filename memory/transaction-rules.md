@@ -1,8 +1,8 @@
 # transaction-rules
 
-Rulebook the `transaction-creator` agent loads on every run. Bullets tagged
-`<!-- auto:arrakis-pin:{sha} -->` are maintained by the drift-sync; everything
-else is hand-written and won't be overwritten.
+Rulebook the `/create-transaction` runbook loads on every run. Hand-written and
+kept in sync with the arrakis backend by a maintainer (see CLAUDE.md → "When
+arrakis changes").
 
 ---
 
@@ -163,11 +163,11 @@ Never compress these into a single line like `Sale · $20k · USD`. A user who d
 
 - **Single-rep, other side is represented**: create an `OTHER_AGENT` participant via `add_participant` (role="other_side_agent") — needs brokerage name (as `companyName`), first/last, email, phone, address, EIN (US), W9 file.
 - **Single-rep, other side unrepresented**: skip entirely.
-- **Dual-rep**: every co-agent is registered **twice** via `add_participant` (role="co_agent") — once as `BUYERS_AGENT`, once as `SELLERS_AGENT`. This is what keeps `DualRepresentationAgentCommissionValidation` happy. The `add_partner_agent` convenience tool handles this automatically when `side=DUAL`.
+- **Dual-rep**: every co-agent is registered **twice** via `add_participant` (role="co_agent") — once as `BUYERS_AGENT`, once as `SELLERS_AGENT`. This is what keeps `DualRepresentationAgentCommissionValidation` happy. On the happy path, pass each DUAL co-agent twice in `create_draft_full`'s `coAgents` (once per side) — the tool does not synthesize the second side for you.
 
 ## Commission payer
 
-**OPTIONAL at submit.** arrakis's `TransactionBuilder.validate()` has its payer-presence check commented out (line ~644: "ignore this for now until we remove skyslope"). A draft with a null payer saves and submits fine. The user fills in the payer in Bolt via "I Don't Have The Information Yet" after opening the draft URL.
+**OPTIONAL at create — but submit without it parks the transaction in NEW.** A draft with a null payer submits successfully (no hard block), BUT the resulting transaction stays in `NEW` with a CRITICAL "Commission Payer information is missing" until a payer is added — it is NOT fully live until then. So a null payer is not "fine"; it's a known, expected post-submit step. Surface that CRITICAL above the URL (don't bury it), and tell the user the payer must be added in Bolt ("I Don't Have The Information Yet" → fill later) or via `wire_commission_payer`. Don't fabricate a payer to dodge the NEW state — a bogus title company is worse than a clean "add this in Bolt."
 
 **When you DO wire a payer**, `CommissionPayerInfoRequestValidator` REQUIRES all six fields simultaneously:
 
@@ -175,8 +175,8 @@ Never compress these into a single line like `Sale · $20k · USD`. A user who d
 
 A partial payload (e.g. only `companyName`) fails bean validation with messages like "First name is required for commission payer info". So:
 
-- **Have all 6 fields** → create the payer via `wire_commission_payer`, point at it via `set_commission_payer{participantId, role}`.
-- **Don't have all 6 fields** → omit both calls. `finalize_draft`'s payer args are optional; leave them unset.
+- **Have all 6 fields** → wire the payer via `wire_commission_payer` (it both creates the payer participant and sets the role in one call).
+- **Don't have all 6 fields** → omit the call. The payer is optional at create; the user adds it in Bolt (transaction lands in NEW until they do — see above).
 
 ### Typical default roles (when the user does provide full info)
 
@@ -191,12 +191,14 @@ A partial payload (e.g. only `companyName`) fails bean validation with messages 
 
 ## Mandatory "no-op" calls
 
-These must be invoked even when nothing changes, or the draft won't be submittable. `finalize_draft` fires them in order:
+These must be invoked even when nothing changes, or the draft won't be submittable. `create_draft_full` fires them in order for the happy path; on the granular path, `set_opcity` + `set_finalize_flags` cover them:
 
 - `set_opcity(opcity=false)` — finalizes the participant list before commission splits. Without this call, the splits call can silently drop participants.
-- `update_personal_deal_info({personalDeal: false, representedByAgent: true})` — both fields `@NotNull`.
-- `update_additional_fees_info({hasAdditionalFees: false, additionalFeesParticipantInfos: []})` — when there are no extra fees.
-- `update_title_info({useRealTitle: false})` — when the user isn't using Real Title (setting `true` requires full `titleContactInfo` + `manualOrderPlaced`).
+- `set_finalize_flags({ personalDeal: {personalDeal: false, representedByAgent: true} })` — both fields `@NotNull`.
+- `set_finalize_flags({ additionalFees: {hasAdditionalFees: false, additionalFeesParticipantInfos: []} })` — when there are no extra fees.
+- `set_finalize_flags({ title: {useRealTitle: false} })` — when the user isn't using Real Title (setting `true` requires full `titleContactInfo` + `manualOrderPlaced`).
+
+(`set_finalize_flags` accepts any subset of `{ personalDeal, additionalFees, title, fmls }` in one call — the three above are typically passed together.)
 
 ## Submit preconditions (mirrored client-side before returning the URL)
 
@@ -211,20 +213,18 @@ The MCP checks these client-side before returning the bolt URL so the user doesn
 
 ## Post-submit entity ids — builderId vs. submitted-entity id
 
-**After any `submit_draft`, use `result.id` (not the original builderId) for subsequent domain operations on the submitted entity.** arrakis creates a separate `Listing` or `Transaction` row at submit with a fresh UUID; the builder's id stops being the authoritative handle. Tools that operate on the submitted entity must receive the post-submit id:
+**After any `submit_draft`, use `result.id` (not the original builderId) for subsequent domain operations on the submitted entity.** arrakis creates a separate `Listing` or `Transaction` row at submit with a fresh UUID; the builder's id stops being the authoritative handle. So `convert_listing(listingId=…, to="transaction")` takes the post-submit `result.id`, NOT the builderId that was submitted (passing the consumed builderId 404s "Transaction not found by id").
 
-- `transition_listing(listingId, …)` — `listingId` is the post-submit `result.id`, NOT the builderId that was submitted.
-- `build_transaction_from_listing(listingId)` — same. Works on listings in `LISTING_ACTIVE` (contrary to the tool doc saying `LISTING_IN_CONTRACT`).
+Builder-scoped reads (`get_draft(builderId)`) still resolve to the builder row post-submit, which is why it's easy to reach for the wrong id. Whenever the next step is a lifecycle operation, consult the submit response and grab `result.id` before proceeding (use `get_transaction(env, id)` to read the live entity back).
 
-Builder-scoped reads (`get_draft(builderId)`) still resolve to the builder row post-submit, which is why it's easy to reach for the wrong id. Whenever the next step is a lifecycle operation, consult the submit response and grab `result.id` before proceeding.
-
-**Seller-side ordering caveat.** arrakis's `transition_listing(LISTING_IN_CONTRACT)` raises a `ListingInContractEvent` that requires an "open transaction" — i.e. a SUBMITTED Transaction entity — already linked to the listing. The runbook's earlier recommendation of transitioning before creating the transaction builder does not work; the correct order for team1/play is:
+**Seller-side ordering — one step, NOT a separate in-contract transition.** The correct order for team1/play:
 
 1. Create listing → submit → `LISTING_ACTIVE`
-2. `build_transaction_from_listing(result.id)` — arrakis is happy with ACTIVE
-3. Fill transaction (buyers, dates) → splits → verify → finalize
-4. Submit the transaction → creates the "open Transaction" arrakis expects
-5. THEN `transition_listing(result.id, LISTING_IN_CONTRACT)` succeeds
+2. `convert_listing(listingId=result.id, to="transaction")` — works DIRECTLY on `LISTING_ACTIVE`; it advances the listing and returns a new transaction builderId inheriting the listing's data
+3. Fill transaction (buyers, dates incl. closingDate) → splits → verify → finalize
+4. Submit the transaction → live
+
+**Do NOT call `convert_listing(to="in_contract")` in this flow.** A normal agent cannot fire the `LISTING_ACTIVE → LISTING_IN_CONTRACT` transition — it 404s (the transition is admin-only, under `nextPrimaryAdminTransition`). The listing reaches `LISTING_IN_CONTRACT` as a downstream effect of the linked transaction, not as a step the agent drives. (Verified 2026-05-28 on team1.)
 
 ## Draft URL
 
