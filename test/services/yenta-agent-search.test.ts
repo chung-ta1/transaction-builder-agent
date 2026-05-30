@@ -135,4 +135,29 @@ describe("YentaAgentApi.searchAgents — client-side narrowing", () => {
     const out = await api.searchAgents(ENV, { firstName: "Chung" });
     expect(out).toHaveLength(3);
   });
+
+  it("matches case-insensitively (surname token differs only in case)", async () => {
+    // Server LIKE on the exact-case surname returns nothing, but the firstName
+    // token finds the roster; case-insensitive narrowing then resolves the agent.
+    const target = { id: "tamember8", firstName: "Chung", lastName: "Tamember8" };
+    const api = new FakeYenta({
+      TaMember8: [], // case-sensitive server miss on the surname token
+      Chung: [...agents(2, "Other"), target], // firstName token returns the roster
+    });
+
+    const out = await api.searchAgents(ENV, { firstName: "Chung", lastName: "TaMember8" });
+
+    expect(out.map((a) => a.yentaId)).toEqual(["tamember8"]);
+  });
+
+  it("only falls through to the next token when the first returns ZERO rows", async () => {
+    // Surname token returns rows → we must NOT also search the firstName token.
+    const api = new FakeYenta({
+      Lee: [{ id: "jordan-lee", firstName: "Jordan", lastName: "Lee" }],
+      Jordan: agents(5, "Jordan"),
+    });
+    const out = await api.searchAgents(ENV, { firstName: "Jordan", lastName: "Lee" });
+    expect(api.calls.every((c) => c.name === "Lee")).toBe(true);
+    expect(out.map((a) => a.yentaId)).toEqual(["jordan-lee"]);
+  });
 });
