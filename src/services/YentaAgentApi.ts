@@ -46,7 +46,7 @@ export class YentaAgentApi extends BaseApi {
    * non-admin callers — verified 2026-05-29 against team1 — so it must NOT be
    * used here.
    *
-   * Two things the server does that this client has to work around (both
+   * Three things the server does that this client has to work around (all
    * confirmed against the AgentController.searchActiveAgents Specification on
    * 2026-05-29):
    *
@@ -60,6 +60,13 @@ export class YentaAgentApi extends BaseApi {
    *    may not be on page 0 — a common surname pushes it onto a later page. So
    *    we walk pages (bounded) until the server reports no more, accumulating
    *    candidates, instead of reading only the first 20 and declaring "no match".
+   * 3. The server's `LIKE` can MISS ON CASE for some records — `name=TaMember8`
+   *    returned zero rows while the stored surname was `Tamember8` (verified
+   *    2026-05-29). A single case-sensitive miss must NOT be reported as "no
+   *    such agent": we try the candidate tokens in selectivity order and fall
+   *    through to the next one whenever the server returns zero rows, then
+   *    narrow the survivors CASE-INSENSITIVELY. Only when EVERY token comes back
+   *    empty do we return no match.
    *
    * `sortBy` is a `List<AgentSearchSortBy>` sent as repeated-key (`indexes: null`).
    */
@@ -74,45 +81,59 @@ export class YentaAgentApi extends BaseApi {
       .map((w) => w?.trim())
       .filter((w): w is string => !!w);
 
-    // Most selective single token: an explicit lastName beats the surname word
-    // of a free-text query (last word in "First Last" order), which beats the
-    // first name; email is the last resort. Never the joined full name (bug #1).
-    const searchToken =
-      query.lastName?.trim()
-      || nameWords[nameWords.length - 1]
-      || query.email?.trim()
-      || "";
+    // Candidate single tokens to search, most selective first. An explicit
+    // lastName beats the surname word of a free-text query (last word in
+    // "First Last" order), which beats the first name; email is the last resort.
+    // Never the joined full name (bug #1). De-duplicated case-insensitively so a
+    // first==last token isn't searched twice. We try the first that yields rows,
+    // falling through on a zero-row (case-miss) response (bug #3).
+    const searchTokens: string[] = [];
+    const pushToken = (t?: string): void => {
+      const v = t?.trim();
+      if (v && !searchTokens.some((x) => x.toLowerCase() === v.toLowerCase())) searchTokens.push(v);
+    };
+    pushToken(query.lastName);
+    pushToken(nameWords[nameWords.length - 1]);
+    pushToken(query.firstName);
+    pushToken(query.email);
 
-    if (!searchToken) return [];
+    if (searchTokens.length === 0) return [];
 
     // Walk pages until the server says there are no more (bug #2). MAX_PAGES is
     // a safety cap so a bare common token can't loop unbounded; surname searches
-    // are selective enough that this is almost always a single page.
+    // are selective enough that this is almost always a single page. Try the
+    // next token only when the current returns ZERO rows (bug #3).
     const PAGE_SIZE = 20;
     const MAX_PAGES = 25;
-    const accumulated: AgentCandidate[] = [];
-    for (let pageNumber = 0; pageNumber < MAX_PAGES; pageNumber++) {
-      const raw = await this.request<unknown>(env, {
-        method: "GET",
-        url: `/api/v1/agents/search/active`,
-        params: {
-          pageNumber,
-          pageSize: PAGE_SIZE,
-          sortBy: ["FIRST_NAME", "LAST_NAME"],
-          sortDirection: "ASC",
-          name: searchToken,
-        },
-        paramsSerializer: { indexes: null },
-      });
-      accumulated.push(...normalize(raw));
-      if (!hasMorePages(raw, pageNumber, PAGE_SIZE)) break;
+    let accumulated: AgentCandidate[] = [];
+    for (const searchToken of searchTokens) {
+      accumulated = [];
+      for (let pageNumber = 0; pageNumber < MAX_PAGES; pageNumber++) {
+        const raw = await this.request<unknown>(env, {
+          method: "GET",
+          url: `/api/v1/agents/search/active`,
+          params: {
+            pageNumber,
+            pageSize: PAGE_SIZE,
+            sortBy: ["FIRST_NAME", "LAST_NAME"],
+            sortDirection: "ASC",
+            name: searchToken,
+          },
+          paramsSerializer: { indexes: null },
+        });
+        accumulated.push(...normalize(raw));
+        if (!hasMorePages(raw, pageNumber, PAGE_SIZE)) break;
+      }
+      if (accumulated.length > 0) break;
     }
 
     // With only one search word there's nothing to narrow on — return every hit.
     // With more (e.g. first + last), keep candidates matching ALL words so a
-    // same-surname homonym on another page doesn't masquerade as the match. If
-    // the full-name filter empties, fall back to the raw token hits so the
-    // caller can still disambiguate rather than seeing a spurious "no match".
+    // same-surname homonym on another page doesn't masquerade as the match.
+    // Matching is CASE-INSENSITIVE (needles + haystack both lowercased) so a
+    // capitalization difference ("TaMember8" vs "Tamember8") doesn't drop a real
+    // agent. If the full-name filter empties, fall back to the raw token hits so
+    // the caller can still disambiguate rather than seeing a spurious "no match".
     if (nameWords.length <= 1) return accumulated;
     const needles = nameWords.map((w) => w.toLowerCase());
     const filtered = accumulated.filter((a) => {
